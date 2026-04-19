@@ -22,6 +22,7 @@ let showIncident = false
 let leafletMap: any = null
 let canvasRenderer: any = null
 let busCircles: Map<string, any> = new Map()
+let routePolyline: any = null
 
 // ... Coordinates and Corridors (unchanged)
 const GPS: Record<string, [number, number]> = {
@@ -72,23 +73,48 @@ function initMap() {
 
 function updateBusMarkers() {
   if (!leafletMap) return
+
+  // Gérer la polyligne de l'itinéraire suivi
+  if (routePolyline) { leafletMap.removeLayer(routePolyline); routePolyline = null }
+
   buses.forEach(bus => {
     const line = lines.find(l => l.id === bus.lineId); if (!line) return
-    if (mapOperatorFilter !== 'all' && line.operatorId !== mapOperatorFilter) {
+    const isT = bus.id === trackedBusId
+
+    // Si on suit un véhicule, on cache tous les autres
+    if (trackedBusId && !isT) {
       const ex = busCircles.get(bus.id); if (ex) ex.setStyle({ opacity:0, fillOpacity:0 }); return
     }
+    // Si filtre opérateur actif
+    if (!trackedBusId && mapOperatorFilter !== 'all' && line.operatorId !== mapOperatorFilter) {
+      const ex = busCircles.get(bus.id); if (ex) ex.setStyle({ opacity:0, fillOpacity:0 }); return
+    }
+
     const coords = line.stopIds.map(id => GPS[id]).filter(Boolean) as [number,number][]
     if (coords.length < 2) return
+
+    // Tracer la route si c'est le bus suivi
+    if (isT) {
+      routePolyline = L.polyline(coords, { color: line.color, weight: 6, opacity: 0.8, dashArray: '10, 10' }).addTo(leafletMap)
+    }
+
     const ts = coords.length - 1; const sc = bus.progress * ts; const seg = Math.min(Math.floor(sc), ts - 1); const t = sc - seg
     const from = coords[seg], to = coords[seg + 1]
     const lat = from[0] + (to[0] - from[0]) * t, lng = from[1] + (to[1] - from[1]) * t
-    const isT = bus.id === trackedBusId; const rad = line.operatorId === 'DDD' ? (isT ? 9 : 6) : (isT ? 7 : 4); const col = isT ? '#fbbf24' : line.color
+    const rad = line.operatorId === 'DDD' ? (isT ? 12 : 6) : (isT ? 10 : 4); const col = isT ? '#22c55e' : line.color // Vert flash pour le bus suivi
+
     if (busCircles.has(bus.id)) {
-      busCircles.get(bus.id)!.setLatLng([lat, lng]).setStyle({ radius: rad, fillColor: col, color: isT ? '#f59e0b' : '#fff', weight: isT ? 3 : 1.5, opacity: 1, fillOpacity: 1 })
+      busCircles.get(bus.id)!.setLatLng([lat, lng]).setStyle({ radius: rad, fillColor: col, color: '#fff', weight: isT ? 4 : 1.5, opacity: 1, fillOpacity: 1 })
     } else {
-      const c = L.circleMarker([lat, lng], { renderer: canvasRenderer, radius: rad, fillColor: col, fillOpacity: 1, color: isT ? '#f59e0b' : '#fff', weight: isT ? 3 : 1.5 })
-      c.on('click', () => { trackedBusId = bus.id; selectedStopId = null; if (leafletMap) leafletMap.panTo([lat, lng], { animate: true }); render() })
+      const c = L.circleMarker([lat, lng], { renderer: canvasRenderer, radius: rad, fillColor: col, fillOpacity: 1, color: '#fff', weight: isT ? 4 : 1.5 })
+      c.on('click', () => { trackedBusId = bus.id; selectedStopId = null; render() })
       c.addTo(leafletMap); busCircles.set(bus.id, c)
+    }
+
+    // Centrer la carte sur le bus suivi
+    if (isT && (window as any)._lastTrackedPos !== `${lat},${lng}`) {
+       leafletMap.panTo([lat, lng], { animate: true, duration: 1 })
+       ;(window as any)._lastTrackedPos = `${lat},${lng}`
     }
   })
 }
@@ -295,8 +321,13 @@ function attachListeners() {
   }))
   uiLayer.querySelector('#go-search')?.addEventListener('click', () => { activeTab = 'search'; render() })
   uiLayer.querySelector('#go-planner')?.addEventListener('click', () => { activeTab = 'planner'; render() })
-  uiLayer.querySelector('#close-sheet')?.addEventListener('click', () => { selectedStopId = null; trackedBusId = null; render() })
-  uiLayer.querySelector('#untrack-btn')?.addEventListener('click', () => { trackedBusId = null; render() })
+  uiLayer.querySelector('#close-sheet')?.addEventListener('click', () => { 
+    selectedStopId = null; if (routePolyline) { leafletMap.removeLayer(routePolyline); routePolyline = null }; trackedBusId = null; render() 
+  })
+  uiLayer.querySelector('#untrack-btn')?.addEventListener('click', () => { 
+    if (routePolyline) { leafletMap.removeLayer(routePolyline); routePolyline = null }
+    trackedBusId = null; render() 
+  })
   uiLayer.querySelector('#cancel-picking')?.addEventListener('click', () => { plannerPicking = null; render() })
   
   if (activeTab === 'planner') {
