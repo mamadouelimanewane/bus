@@ -260,8 +260,8 @@ export function getSearchResults(query: string, filter: 'all' | 'DDD' | 'AFTU' =
       const agg = normalizeString(`${line.code} ${line.name} ${line.headsign}`)
       const match = terms.every((term) => isFuzzyMatch(agg, term))
       if (!match) return false
-      if (filter === 'DDD' && !line.name.includes('DDD')) return false
-      if (filter === 'AFTU' && !line.name.includes('AFTU')) return false
+      if (filter === 'DDD' && line.operatorId !== 'DDD') return false
+      if (filter === 'AFTU' && line.operatorId !== 'AFTU-TATA') return false
       return true
     })
     .slice(0, 4)

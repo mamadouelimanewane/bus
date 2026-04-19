@@ -803,3 +803,52 @@ html, body {
   font-weight: 600;
   cursor: pointer;
 }
+
+/* ── Fleet Demo Panel ─────────────────────────────────────────────────── */
+.fleet-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  white-space: nowrap;
+}
+
+.fleet-pill strong { font-size: 12px; font-weight: 800; }
+
+/* Operator filter buttons on map */
+.op-filter-btn { transition: all 0.2s; }
+.op-filter-btn:active { transform: scale(0.96); }
+
+/* Operator badge in lines list */
+.line-badge { flex-shrink: 0; }
+
+/* Profile scroll fix */
+.profile-scroll-fix {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px 16px;
+}
+
+/* Bus tracking sheet tracking bar */
+.track-progress-bar {
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--border);
+  margin-bottom: 12px;
+}
+
+/* Pagination indicator for lines */
+.lines-more {
+  text-align: center;
+  padding: 14px;
+  font-size: 13px;
+  color: var(--muted);
+  font-style: italic;
+}
+

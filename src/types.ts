@@ -10,6 +10,7 @@ export type Line = {
   id: string
   code: string
   name: string
+  operatorId: 'DDD' | 'AFTU-TATA'
   headsign: string
   color: string
   stopIds: string[]
