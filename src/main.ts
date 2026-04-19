@@ -282,7 +282,6 @@ function renderPage() {
 }
 
 function renderSearch() {
-  const results = searchQuery.length > 1 ? getSearchResults(searchQuery) : []
   return `
     <div class="search-header">
       <div class="search-input-row">
@@ -290,7 +289,8 @@ function renderSearch() {
           <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
         </svg>
         <input id="search-input" type="text" placeholder="Ligne ou destination"
-          value="${escapeHtml(searchQuery)}" autocomplete="off" autocorrect="off" />
+          value="${escapeHtml(searchQuery)}" autocomplete="off" autocorrect="off"
+          autocapitalize="off" spellcheck="false" />
         <button class="swap-btn" title="Inverser">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M7 16V4m0 0L3 8m4-4 4 4"/><path d="M17 8v12m0 0 4-4m-4 4-4-4"/>
@@ -299,8 +299,17 @@ function renderSearch() {
       </div>
     </div>
 
-    <div class="search-body">
-      ${searchQuery.length === 0 ? `
+    <div class="search-body" id="search-results-body">
+      ${renderSearchBody()}
+    </div>
+  `
+}
+
+// ── Renders ONLY the results/cards inside the search body (no input) ─────────
+function renderSearchBody(): string {
+  const results = searchQuery.length > 1 ? getSearchResults(searchQuery) : []
+
+  if (searchQuery.length === 0) { return `
         <!-- Action cards (Transit style) -->
         <div class="action-cards">
           <button class="action-card" id="pick-on-map">
@@ -364,47 +373,87 @@ function renderSearch() {
             `).join('')}
           </div>
         ` : ''}
-      ` : `
-        <!-- Search results -->
-        ${results.length > 0 ? `
-          <div class="results-list">
-            ${results.map(r => {
-              if (r.type === 'stop') {
-                return `
-                  <div class="result-item" data-stop-id="${r.stop.id}">
-                    <div class="result-icon" style="background:#4a90d9;">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
-                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
-                      </svg>
-                    </div>
-                    <div class="result-text">
-                      <div class="result-name">${escapeHtml(r.stop.name)}</div>
-                      <div class="result-sub">${r.stop.district} · Dakar, Sénégal</div>
-                    </div>
-                  </div>
-                `
-              } else {
-                return `
-                  <div class="result-item" data-line-id="${r.line.id}">
-                    <div class="result-icon" style="background:${r.line.color};">${r.line.code}</div>
-                    <div class="result-text">
-                      <div class="result-name">${escapeHtml(r.line.name)}</div>
-                      <div class="result-sub">→ ${escapeHtml(r.line.headsign)} · ${r.line.frequencyMin} min</div>
-                    </div>
-                  </div>
-                `
-              }
-            }).join('')}
-          </div>
-        ` : `
-          <div style="text-align:center; padding: 40px 20px; color: var(--muted);">
-            <div style="font-size:40px; margin-bottom:12px;">🔍</div>
-            <div style="font-size:15px;">Aucun résultat pour « ${escapeHtml(searchQuery)} »</div>
-          </div>
-        `}
-      `}
+      `
+  }
+
+  // ── Results mode ──────────────────────────────────────────────────────────
+  if (results.length > 0) {
+    return `
+      <div class="results-list">
+        ${results.map(r => {
+          if (r.type === 'stop') {
+            return `
+              <div class="result-item" data-stop-id="${r.stop.id}">
+                <div class="result-icon" style="background:#4a90d9;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+                  </svg>
+                </div>
+                <div class="result-text">
+                  <div class="result-name">${escapeHtml(r.stop.name)}</div>
+                  <div class="result-sub">${r.stop.district} · Dakar, Sénégal</div>
+                </div>
+              </div>
+            `
+          } else {
+            return `
+              <div class="result-item" data-line-id="${r.line.id}">
+                <div class="result-icon" style="background:${r.line.color};">${r.line.code}</div>
+                <div class="result-text">
+                  <div class="result-name">${escapeHtml(r.line.name)}</div>
+                  <div class="result-sub">→ ${escapeHtml(r.line.headsign)} · ${r.line.frequencyMin} min</div>
+                </div>
+              </div>
+            `
+          }
+        }).join('')}
+      </div>
+    `
+  }
+
+  return `
+    <div style="text-align:center; padding: 40px 20px; color: var(--muted);">
+      <div style="font-size:40px; margin-bottom:12px;">🔍</div>
+      <div style="font-size:15px;">Aucun résultat pour « ${escapeHtml(searchQuery)} »</div>
     </div>
   `
+}
+
+// ── Updates only the results div, without touching the input element ──────────
+function updateSearchResults() {
+  const body = uiLayer.querySelector<HTMLElement>('#search-results-body')
+  if (!body) return
+  body.innerHTML = renderSearchBody()
+  attachSearchBodyListeners()
+}
+
+// ── Attaches listeners for result items and action cards ──────────────────────
+function attachSearchBodyListeners() {
+  // Action cards
+  uiLayer.querySelector('#pick-on-map')?.addEventListener('click', () => { activeTab = 'map'; render() })
+  uiLayer.querySelector('#set-home')?.addEventListener('click', () => alert('Fonctionnalité domicile à venir'))
+  uiLayer.querySelector('#set-work')?.addEventListener('click', () => alert('Fonctionnalité travail à venir'))
+  uiLayer.querySelector('#show-events')?.addEventListener('click', () => alert('Aucun événement en cours à Dakar'))
+
+  // Recent search click
+  uiLayer.querySelectorAll<HTMLElement>('.recent-item').forEach(item => {
+    item.addEventListener('click', () => {
+      searchQuery = item.dataset.search || ''
+      updateSearchResults()
+    })
+  })
+
+  // Result: stop
+  uiLayer.querySelectorAll<HTMLElement>('.result-item[data-stop-id]').forEach(item => {
+    item.addEventListener('click', () => {
+      const stopId = item.dataset.stopId!
+      selectedStopId = stopId
+      activeTab = 'map'
+      searchQuery = ''
+      if (leafletMap && GPS[stopId]) leafletMap.setView(GPS[stopId], 15)
+      render()
+    })
+  })
 }
 
 function renderLines() {
@@ -609,55 +658,33 @@ function attachListeners() {
     render()
   })
 
-  // Search input
+  // ── Search input: update only results, never recreate the input field ────
   const searchInput = uiLayer.querySelector<HTMLInputElement>('#search-input')
   if (searchInput) {
-    searchInput.addEventListener('input', e => {
-      searchQuery = (e.target as HTMLInputElement).value
-      render()
+    // Use 'input' event — fires after each character including IME composition
+    searchInput.addEventListener('input', () => {
+      searchQuery = searchInput.value   // read directly from the live element
+      updateSearchResults()             // only update the results div below
     })
     searchInput.addEventListener('keydown', e => {
-      if (e.key === 'Enter' && searchQuery) {
+      if (e.key === 'Enter' && searchQuery.trim()) {
         const trimmed = searchQuery.trim()
         searchHistory = [trimmed, ...searchHistory.filter(h => h !== trimmed)].slice(0, 5)
-        render()
+        // Clear query and show cards again without destroying the input
+        searchQuery = ''
+        searchInput.value = ''
+        updateSearchResults()
+      }
+      if (e.key === 'Escape') {
+        searchQuery = ''
+        searchInput.value = ''
+        updateSearchResults()
       }
     })
-    // Re-focus after render
-    setTimeout(() => searchInput.focus(), 50)
   }
 
-  // Action cards
-  uiLayer.querySelector('#pick-on-map')?.addEventListener('click', () => {
-    activeTab = 'map'
-    render()
-  })
-  uiLayer.querySelector('#set-home')?.addEventListener('click', () => alert('Fonctionnalité domicile à venir'))
-  uiLayer.querySelector('#set-work')?.addEventListener('click', () => alert('Fonctionnalité travail à venir'))
-  uiLayer.querySelector('#show-events')?.addEventListener('click', () => alert('Aucun événement en cours à Dakar'))
-
-  // Recent search click
-  uiLayer.querySelectorAll<HTMLElement>('.recent-item').forEach(item => {
-    item.addEventListener('click', () => {
-      searchQuery = item.dataset.search || ''
-      render()
-    })
-  })
-
-  // Search result: stop
-  uiLayer.querySelectorAll<HTMLElement>('.result-item[data-stop-id]').forEach(item => {
-    item.addEventListener('click', () => {
-      const stopId = item.dataset.stopId!
-      selectedStopId = stopId
-      activeTab = 'map'
-      searchQuery = ''
-      const stop = stops.find(s => s.id === stopId)
-      if (stop && GPS[stopId] && leafletMap) {
-        leafletMap.setView(GPS[stopId], 15)
-      }
-      render()
-    })
-  })
+  // Attach search body listeners (cards + recent + results)
+  attachSearchBodyListeners()
 
   // Line filter chips
   uiLayer.querySelectorAll<HTMLElement>('.filter-chip').forEach(chip => {
