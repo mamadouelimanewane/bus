@@ -237,29 +237,29 @@ function mkAFTU(n: number, ids: string[]): Line {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GÉNÉRATION DES 150 LIGNES DDD
+// GÉNÉRATION DES 70 LIGNES DDD
 // ─────────────────────────────────────────────────────────────────────────────
 const dddLines: Line[] = []
 let dn = 1
 for (const base of DDD_BASE) {
   for (const v of v5(base)) {
-    if (dn > 150) break
+    if (dn > 70) break
     dddLines.push(mkDDD(dn++, v))
   }
-  if (dn > 150) break
+  if (dn > 70) break
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GÉNÉRATION DES 200 LIGNES AFTU-TATA
+// GÉNÉRATION DES 80 LIGNES AFTU-TATA
 // ─────────────────────────────────────────────────────────────────────────────
 const aftuLines: Line[] = []
 let an = 1
 for (const base of AFTU_BASE) {
   for (const v of v5(base)) {
-    if (an > 200) break
+    if (an > 80) break
     aftuLines.push(mkAFTU(an++, v))
   }
-  if (an > 200) break
+  if (an > 80) break
 }
 
 export const lines: Line[] = [...dddLines, ...aftuLines]

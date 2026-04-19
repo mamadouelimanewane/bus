@@ -33,23 +33,42 @@ const GPS: Record<string, [number, number]> = {
   'parcelles': [14.7853, -17.4277], 'cambrene': [14.7912, -17.4232], 'guediawaye': [14.7783, -17.4020], 'hamo4': [14.7630, -17.4050], 'cite-comico': [14.7700, -17.4150], 'sipres': [14.7680, -17.3880], 'dakar-eaux-forets': [14.7500, -17.4100],
   'yeumbeul': [14.7622, -17.3527], 'malika': [14.7756, -17.3176], 'mbao': [14.7191, -17.3480], 'keur-mbaye-fall': [14.7170, -17.3440], 'keur-massar': [14.7090, -17.3364], 'zac-mbao': [14.7200, -17.3400], 'route-nationale': [14.7400, -17.3600],
   'rufisque': [14.7165, -17.2718], 'bargny': [14.7050, -17.2280], 'diamniadio': [14.7180, -17.1830], 'sebikotane': [14.7280, -17.1320],
-  // Waypoints (silencieux)
-  'w-yarakh': [14.7180, -17.4260],
+  // Waypoints techniques pour forcer le tracé sur terre/routes
+  'w-yarakh': [14.7170, -17.4250],   // Contournement baie de Hann
+  'w-corniche': [14.6950, -17.4720], // Corniche Ouest pour éviter de traverser la mer vers Ouakam
+  'w-autoroute': [14.7050, -17.4350], // Autoroute vers Patte Oie
+  'w-camp': [14.7350, -17.4050],     // Détour Pikine Nord
 }
 
+/**
+ * Cette fonction garantit que le tracé suit une logique routière.
+ * Elle injecte des waypoints entre certains arrêts problématiques (ceux dont la ligne droite traverse l'eau).
+ */
 function getPathWithWaypoints(stops: string[]): [number, number][] {
   const final: [number, number][] = []
   for (let i = 0; i < stops.length; i++) {
-    const sId = stops[i]
-    final.push(GPS[sId])
+    const sId = stops[i]; const coord = GPS[sId]; if (!coord) continue
+    final.push(coord)
     if (i < stops.length - 1) {
       const a = sId, b = stops[i+1]
-      // Contourner la baie de Hann si on va vers Pikine/Rufisque depuis le centre
-      if ((a==='colobane' || a==='fass' || a==='medina') && (b==='pikine' || b==='thiaroye-gare')) final.push(GPS['w-yarakh'])
-      if ((b==='colobane' || b==='fass' || b==='medina') && (a==='pikine' || a==='thiaroye-gare')) final.push(GPS['w-yarakh'])
+      // Éviter la Baie de Hann (Dakar -> Pikine)
+      if (((a==='colobane' || a==='petersen' || a==='sandaga' || a==='medina') && (b==='pikine' || b==='thiaroye-gare')) ||
+          ((b==='colobane' || b==='petersen' || b==='sandaga' || b==='medina') && (a==='pikine' || a==='thiaroye-gare'))) {
+          final.push(GPS['w-yarakh'])
+      }
+      // Éviter la mer Corniche Ouest (Fann -> Ouakam/Mermoz)
+      if (((a==='fann' || a==='fass' || a==='medina') && (b==='ouakam' || b==='mermoz' || b==='ngor' || b==='almadies')) ||
+          ((b==='fann' || b==='fass' || b==='medina') && (a==='ouakam' || a==='mermoz' || a==='ngor' || a==='almadies'))) {
+          final.push(GPS['w-corniche'])
+      }
+      // Dakar -> Parcelle/Grand Yoff via Autoroute
+      if (((a==='colobane' || a==='petersen') && (b==='patte-oie' || b==='grand-yoff' || b==='parcelles')) ||
+          ((b==='colobane' || b==='petersen') && (a==='patte-oie' || a==='grand-yoff' || a==='parcelles'))) {
+          final.push(GPS['w-autoroute'])
+      }
     }
   }
-  return final.filter(Boolean)
+  return final
 }
 
 const CORRIDORS_RAW = [['palais','sandaga','petersen','medina','gueule-tapee','colobane','pikine','thiaroye-gare','rufisque','bargny','diamniadio','sebikotane'], ['palais','dakar-ponty','tilene','biscuiterie','hlm','dieuppeul','castors','liberte6','sacrecoeur','grand-yoff','patte-oie','nord-foire','parcelles','cambrene','guediawaye'], ['palais','fann','stele-mermoz','mermoz','ouakam','almadies','ngor','yoff']]
