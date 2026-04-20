@@ -16,7 +16,7 @@ export const GPS: Record<string, [number, number]> = {
 }
 
 export type RoadGeometry = { coords: [number, number][], distances: number[], total: number }
-const geometryCache = new Map<string, RoadGeometry>()
+export const roadCache = new Map<string, RoadGeometry>()
 
 /**
  * Graphe de Navigation Haute-Fidélité pour le mode démo
@@ -58,7 +58,7 @@ function solveRoadPath(stopIds: string[]): [number, number][] {
   return finalPath.map(id => GPS[id]).filter(Boolean)
 }
 
-function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+export function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371; const dLat = (lat2-lat1)*(Math.PI/180); const dLon = (lon2-lon1)*(Math.PI/180)
   const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
@@ -69,7 +69,7 @@ function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): 
  */
 export function getFullRoadPathSync(stopIds: string[]): RoadGeometry {
   const key = stopIds.join('|')
-  if (geometryCache.has(key)) return geometryCache.get(key)!
+  if (roadCache.has(key)) return roadCache.get(key)!
 
   const coords = solveRoadPath(stopIds)
   const distances: number[] = [0]
@@ -79,7 +79,7 @@ export function getFullRoadPathSync(stopIds: string[]): RoadGeometry {
     total += d; distances.push(total)
   }
   const result = { coords, distances, total }
-  geometryCache.set(key, result)
+  roadCache.set(key, result)
   return result
 }
 
