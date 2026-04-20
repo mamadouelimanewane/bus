@@ -1,5 +1,5 @@
 /**
- * Service de Routage Partagé (LocationIQ/OSRM)
+ * Service de Routage Partagé (Local & Remote)
  */
 
 export const GPS: Record<string, [number, number]> = {
@@ -20,74 +20,88 @@ export type RoadGeometry = { coords: [number, number][], distances: number[], to
 export const roadCache = new Map<string, RoadGeometry>()
 
 /**
- * Calcul de la distance Haversine entre deux points (lat/lon)
+ * Calcul automatique des trajectoires terrestres (Definitif)
  */
-export function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371
-  const dLat = (lat2 - lat1) * Math.PI / 180
-  const dLon = (lon2 - lon1) * Math.PI / 180
-  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-            Math.sin(dLon / 2) * Math.sin(dLon / 2)
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+function applyCoastLogic(coords: [number, number][]): [number, number][] {
+  const result: [number, number][] = [coords[0]]
+  for (let i = 0; i < coords.length - 1; i++) {
+    const p1 = coords[i], p2 = coords[i+1]
+    const isBanlieue = (c: [number,number]) => c[1] > -17.40
+    const isPlateau = (c: [number,number]) => c[1] < -17.435 && c[0] < 14.685
+
+    // Si on traverse la baie entre banlieue et plateau
+    if ((isBanlieue(p1) && isPlateau(p2)) || (isPlateau(p1) && isBanlieue(p2))) {
+      if (isBanlieue(p1)) {
+        result.push([14.7150, -17.4250]) // Hann-Bel-Air Junction
+        result.push([14.7000, -17.4350]) // Autoroute Junction
+        result.push([14.6850, -17.4300]) // Cyrnos/Entrée Ville
+      } else {
+        result.push([14.6850, -17.4300]) // Cyrnos/Entrée Ville
+        result.push([14.7000, -17.4350]) // Autoroute Junction
+        result.push([14.7150, -17.4250]) // Hann-Bel-Air Junction
+      }
+    }
+    result.push(p2)
+  }
+  return result
 }
 
-/**
- * Récupère le tracé réel via LocationIQ
- */
+export function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371
+  const dLat = (lat2-lat1) * (Math.PI/180); const dLon = (lon2-lon1) * (Math.PI/180)
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+}
+
+function buildGeometry(coords: [number, number][]): RoadGeometry {
+  const finalCoords = applyCoastLogic(coords)
+  const distances: number[] = [0]
+  let total = 0
+  for (let i = 0; i < finalCoords.length - 1; i++) {
+    const d = getDistanceKm(finalCoords[i][0], finalCoords[i][1], finalCoords[i+1][0], finalCoords[i+1][1])
+    total += d; distances.push(total)
+  }
+  return { coords: finalCoords, distances, total }
+}
+
 export async function getFullRoadPath(stopIds: string[]): Promise<RoadGeometry> {
   const cacheKey = `liq_${stopIds.join('|')}`
   if (roadCache.has(cacheKey)) return roadCache.get(cacheKey)!
 
   const stopsCoords = stopIds.map(id => GPS[id]).filter(Boolean)
-  let finalCoords: [number, number][] = stopsCoords
+  let result = buildGeometry(stopsCoords)
 
   if (stopsCoords.length >= 2) {
     try {
       const query = stopsCoords.map(c => `${c[1]},${c[0]}`).join(';')
       const url = `https://us1.locationiq.com/v1/directions/driving/${query}?key=${LOCATIONIQ_KEY}&overview=full&geometries=geojson`
       const res = await fetch(url)
-      const data = await res.json()
-      if (data.routes && data.routes[0]) {
-        finalCoords = data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]])
+      if (res.ok) {
+        const data = await res.json()
+        if (data.routes?.[0]) {
+           const remoteCoords = data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]] as [number, number])
+           result = buildGeometry(remoteCoords) // On repasse par buildGeometry pour s'assurer des distances
+        }
       }
     } catch (e) {
-      console.warn("LocationIQ Fallback", e)
+      console.warn("LocationIQ Throttling - Using local navigation logic")
     }
   }
 
-  const distances: number[] = [0]
-  let total = 0
-  for (let i = 0; i < finalCoords.length - 1; i++) {
-    // On utilise la distance réelle en km pour les ETAs
-    const d = getDistanceKm(finalCoords[i][0], finalCoords[i][1], finalCoords[i+1][0], finalCoords[i+1][1])
-    total += d
-    distances.push(total)
-  }
-
-  const result = { coords: finalCoords, distances, total }
   roadCache.set(cacheKey, result)
   return result
 }
 
-/**
- * Interpolation précise le long d'une polyline en fonction de la distance
- */
 export function interpolate(road: RoadGeometry, progress: number): [number, number] {
   if (road.coords.length < 2) return road.coords[0] || [0, 0]
   const target = (progress % 1) * road.total
   let low = 0, high = road.distances.length - 1
   while (low < high) {
-    const mid = Math.floor((low + high) / 2)
-    if (road.distances[mid] < target) low = mid + 1
-    else high = mid
+    const mid = (low + high) >> 1
+    if (road.distances[mid] < target) low = mid + 1; else high = mid
   }
-  const i = Math.max(1, low)
-  const dStart = road.distances[i-1], dEnd = road.distances[i]
+  const i = Math.max(1, low); const dStart = road.distances[i-1], dEnd = road.distances[i]
   const segProgress = dEnd === dStart ? 0 : (target - dStart) / (dEnd - dStart)
   const p1 = road.coords[i-1], p2 = road.coords[i]
-  return [
-    p1[0] + (p2[0] - p1[0]) * segProgress,
-    p1[1] + (p2[1] - p1[1]) * segProgress
-  ]
+  return [ p1[0] + (p2[0] - p1[0]) * segProgress, p1[1] + (p2[1] - p1[1]) * segProgress ]
 }

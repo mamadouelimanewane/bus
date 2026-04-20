@@ -60,6 +60,9 @@ async function initMap() {
     L.polyline(road.coords, { color:'#9ca3af', weight:2, opacity:0.3 }).addTo(leafletMap)
   }
 
+  // WARM UP CACHE for all lines in background
+  lines.forEach(async (line) => getFullRoadPath(line.stopIds))
+
   stops.forEach(stop => {
     const c = GPS[stop.id]; if(!c) return
     const isGare = GARES.includes(stop.id)
