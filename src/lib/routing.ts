@@ -1,6 +1,5 @@
 /**
- * Service de Routage Statique Haute-Fidélité (Sans API)
- * Garantit que tous les bus restent sur la route en utilisant un graphe de navigation pré-établi.
+ * Service de Routage Statique Haute-Fidélité (Zéro Mer)
  */
 
 export const GPS: Record<string, [number, number]> = {
@@ -20,42 +19,47 @@ export const roadCache = new Map<string, RoadGeometry>()
 
 /**
  * Graphe de Navigation Haute-Fidélité pour le mode démo
- * Définit les routes réelles "bitumées" entre les quartiers majeurs.
- */
-const NAV_MESH: Record<string, Record<string, string[]>> = {
-  'pikine': { 'palais': ['autoroute-hann', 'colobane', 'cyrnos'] },
-  'thiaroye-gare': { 'palais': ['pikine', 'autoroute-hann', 'colobane', 'cyrnos'] },
-  'parcelles': { 'palais': ['patte-oie', 'autoroute-hann', 'colobane', 'cyrnos'] },
-  'guediawaye': { 'palais': ['parcelles', 'patte-oie', 'autoroute-hann', 'colobane', 'cyrnos'] },
-  'ouakam': { 'palais': ['mermoz', 'stele-mermoz', 'fann', 'medina'] },
-}
-
-/**
- * Génère un tracé bitumé en injectant des points de passage obligatoires
  */
 function solveRoadPath(stopIds: string[]): [number, number][] {
-  let path: string[] = [stopIds[0]]
+  const expanded: [number, number][] = []
   
   for (let i = 0; i < stopIds.length - 1; i++) {
     const s1 = stopIds[i], s2 = stopIds[i+1]
+    const c1 = GPS[s1], c2 = GPS[s2]
+    if (!c1 || !c2) continue
     
-    // Vérification du Mesh de navigation pour injection de bitume
-    let injected: string[] = []
-    if (NAV_MESH[s1]?.[s2]) injected = NAV_MESH[s1][s2]
-    else if (NAV_MESH[s2]?.[s1]) injected = [...NAV_MESH[s2][s1]].reverse()
-    
-    // Injection spécifique pour la baie de Dakar (Fail-safe ultime)
-    const isEast = (id: string) => GPS[id] && GPS[id][1] > -17.41
-    const isWest = (id: string) => GPS[id] && GPS[id][1] < -17.43
-    if (isEast(s1) && isWest(s2) && !injected.length) injected = ['autoroute-hann', 'colobane']
-    if (isWest(s1) && isEast(s2) && !injected.length) injected = ['colobane', 'autoroute-hann']
+    if (expanded.length === 0) expanded.push(c1)
 
-    path.push(...injected, s2)
+    // Logique de Bitume Obligatoire (Zéro Mer)
+    const isEast = (c: [number, number]) => c[1] > -17.41
+    const isWest = (c: [number, number]) => c[1] < -17.43
+    const isNorth = (c: [number, number]) => c[0] > 14.72
+
+    if ((isEast(c1) && isWest(c2)) || (isWest(c1) && isEast(c2))) {
+      // Si on va de la banlieue au centre ou inversement
+      if (isEast(c1)) {
+        expanded.push(GPS['patte-oie'])
+        expanded.push(GPS['autoroute-hann'])
+        expanded.push(GPS['colobane'])
+      } else {
+        expanded.push(GPS['colobane'])
+        expanded.push(GPS['autoroute-hann'])
+        expanded.push(GPS['patte-oie'])
+      }
+    } else if (isNorth(c2) && !isNorth(c1) && isWest(c1)) {
+      // Si on monte vers le nord (Ouakam/Yoff) depuis le centre
+      expanded.push(GPS['vignobles'] || GPS['fass'])
+    }
+
+    expanded.push(c2)
   }
-
-  // Filtrage des doublons consécutifs
-  const finalPath = path.filter((id, i) => id !== path[i - 1])
-  return finalPath.map(id => GPS[id]).filter(Boolean)
+  
+  // Nettoyage des doublons consécutifs (basé sur la valeur)
+  return expanded.filter((c, i) => {
+    if (i === 0) return true
+    const prev = expanded[i-1]
+    return c[0] !== prev[0] || c[1] !== prev[1]
+  })
 }
 
 export function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -64,9 +68,6 @@ export function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
 }
 
-/**
- * Version Synchrone et Définitive (Zéro Latence, Zéro Mer)
- */
 export function getFullRoadPathSync(stopIds: string[]): RoadGeometry {
   const key = stopIds.join('|')
   if (roadCache.has(key)) return roadCache.get(key)!
@@ -83,7 +84,6 @@ export function getFullRoadPathSync(stopIds: string[]): RoadGeometry {
   return result
 }
 
-// Wrapper async pour compatibilité avec le code existant
 export async function getFullRoadPath(stopIds: string[]): Promise<RoadGeometry> {
   return getFullRoadPathSync(stopIds)
 }

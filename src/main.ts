@@ -128,7 +128,7 @@ async function updateBusMarkers() {
     if (trackedBusId && !isT) { const ex=busCircles.get(bus.id); if(ex) ex.remove(); continue }
     if (!trackedBusId && mapOperatorFilter!=='all' && line.operatorId!==mapOperatorFilter) { const ex=busCircles.get(bus.id); if(ex) ex.remove(); continue }
 
-    const road = await getFullRoadPath(line.stopIds)
+    const road = getFullRoadPathSync(line.stopIds)
     if (road.coords.length < 2) continue
 
     if (isT) {
