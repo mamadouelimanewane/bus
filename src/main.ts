@@ -1,6 +1,6 @@
 import { buses, lines, stops } from './data/network'
 import { getPredictions, getSearchResults, tickBuses, formatEta, findJourneys } from './lib/transit'
-import { GPS, getFullRoadPathSync, getFullRoadPath, interpolate } from './lib/routing'
+import { GPS, getFullRoadPathSync, interpolate } from './lib/routing'
 import type { RoadGeometry } from './lib/routing'
 import './style.css'
 
