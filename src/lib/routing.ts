@@ -17,81 +17,50 @@ const LOCATIONIQ_KEY = 'pk.ef8f3d80db02a286ae4b6fae736af632'
 export type RoadGeometry = { coords: [number, number][], distances: number[], total: number }
 export const roadCache = new Map<string, RoadGeometry>()
 
-/**
- * Fallback "Safe Bitume" (Solution de Secours Locale)
- * Si l'API échoue, on injecte manuellement les nœuds de l'autoroute.
- */
 function getSafeFallback(coords: [number, number][]): [number, number][] {
   const result: [number, number][] = [coords[0]]
   for (let i = 0; i < coords.length - 1; i++) {
     const c1 = coords[i], c2 = coords[i+1]
-    const isEast = (c: [number,number]) => c[1] > -17.41
-    const isWest = (c: [number,number]) => c[1] < -17.435
+    const isEast = (c: [number,number]) => c[1] > -17.41; const isWest = (c: [number,number]) => c[1] < -17.435
     if ((isEast(c1) && isWest(c2)) || (isWest(c1) && isEast(c2))) {
-      result.push([14.7000, -17.4350]) // Hann / Autoroute Bypass
-      result.push([14.6850, -17.4290]) // Cyrnos Bypass
+      result.push([14.7000, -17.4350], [14.6850, -17.4290])
     }
     result.push(c2)
   }
   return result
 }
 
-/**
- * Récupère le tracé réel (Direction API) avec Fallback Ultra-Sécurisé
- */
 export async function getFullRoadPath(stopIds: string[]): Promise<RoadGeometry> {
-  const key = stopIds.join('|')
-  if (roadCache.has(key)) return roadCache.get(key)!
-
+  const key = stopIds.join('|'); if (roadCache.has(key)) return roadCache.get(key)!
   const stopsCoords = stopIds.map(id => GPS[id]).filter(Boolean)
   let finalCoords: [number, number][] = getSafeFallback(stopsCoords)
-
   if (stopsCoords.length >= 2) {
     try {
       const query = stopsCoords.map(c => `${c[1]},${c[0]}`).join(';')
       const url = `https://us1.locationiq.com/v1/directions/driving/${query}?key=${LOCATIONIQ_KEY}&overview=full&geometries=geojson`
-      const res = await fetch(url)
-      if (res.ok) {
+      const res = await fetch(url); if (res.ok) {
         const data = await res.json()
-        if (data.routes?.[0]) {
-          finalCoords = data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]] as [number, number])
-        }
+        if (data.routes?.[0]) finalCoords = data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]] as [number, number])
       }
-    } catch (e) {
-      console.warn("LocationIQ Throttling - Using Safe Fallback")
-    }
+    } catch (e) { console.warn("LocationIQ Throttling - Using Fallback") }
   }
-
   const distances: number[] = [0]; let total = 0
   for (let i = 0; i < finalCoords.length - 1; i++) {
     const d = getDistanceKm(finalCoords[i][0], finalCoords[i][1], finalCoords[i+1][0], finalCoords[i+1][1])
     total += d; distances.push(total)
   }
-  const result = { coords: finalCoords, distances, total }
-  roadCache.set(key, result)
-  return result
+  const result = { coords: finalCoords, distances, total }; roadCache.set(key, result); return result
 }
 
-// Version synchronisée vers le cache (pour l'UI rapide)
 export function getFullRoadPathSync(stopIds: string[]): RoadGeometry {
-  const key = stopIds.join('|')
-  if (roadCache.has(key)) return roadCache.get(key)!
-  
-  // Si pas en cache, on retourne le fallback immédiat et on lance le fetch en tâche de fond
-  const stopsCoords = stopIds.map(id => GPS[id]).filter(Boolean)
-  const fallback = getSafeFallback(stopsCoords)
-  
+  const key = stopIds.join('|'); if (roadCache.has(key)) return roadCache.get(key)!
+  const stopsCoords = stopIds.map(id => GPS[id]).filter(Boolean); const fallback = getSafeFallback(stopsCoords)
   const distances: number[] = [0]; let total = 0
   for (let i = 0; i < fallback.length - 1; i++) {
     const d = getDistanceKm(fallback[i][0], fallback[i][1], fallback[i+1][0], fallback[i+1][1])
     total += d; distances.push(total)
   }
-  const result = { coords: fallback, distances, total }
-  
-  // Déclenchement de la récupération haute-définition en arrière-plan
-  getFullRoadPath(stopIds) 
-  
-  return result
+  const result = { coords: fallback, distances, total }; getFullRoadPath(stopIds); return result
 }
 
 export function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -102,8 +71,7 @@ export function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: nu
 
 export function interpolate(road: RoadGeometry, progress: number): [number, number] {
   if (road.coords.length < 2) return road.coords[0] || [0, 0]
-  const target = (progress % 1) * road.total
-  let low = 0, high = road.distances.length - 1
+  const target = (progress % 1) * road.total; let low = 0, high = road.distances.length - 1
   while (low < high) {
     const mid = (low + high) >> 1
     if (road.distances[mid] < target) low = mid + 1; else high = mid
