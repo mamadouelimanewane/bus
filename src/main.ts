@@ -46,7 +46,11 @@ async function initMap() {
   if (typeof L === 'undefined') return
   canvasRenderer = L.canvas({ padding: 0.5 })
   leafletMap = L.map('map-layer', { zoomControl: false, minZoom: 11, maxZoom: 18 }).setView([14.7137, -17.4300], 12)
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(leafletMap)
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap, © CartoDB',
+    subdomains: 'abcd',
+    maxZoom: 20
+  }).addTo(leafletMap)
   
   stopsLayer = L.layerGroup().addTo(leafletMap)
   routeDecorators = L.layerGroup().addTo(leafletMap)
@@ -54,10 +58,11 @@ async function initMap() {
   const userIcon = L.divIcon({ className:'', html:'<div class="user-dot-marker"></div>', iconSize:[20,20], iconAnchor:[10,10]})
   L.marker([14.7137, -17.4300], { icon: userIcon, zIndexOffset: 2000 }).addTo(leafletMap)
 
-  // Tracer les corridors principaux avec le routage réel
+  // Tracer les corridors principaux avec le routage LIVE (Uber-style)
   for (const cor of CORRIDORS_RAW) {
-    const road = getFullRoadPathSync(cor)
-    L.polyline(road.coords, { color:'#9ca3af', weight:2, opacity:0.3 }).addTo(leafletMap)
+     getFullRoadPath(cor).then(road => {
+        L.polyline(road.coords, { color:'#94a3b8', weight:1.5, opacity:0.4 }).addTo(leafletMap)
+     })
   }
 
   // WARM UP CACHE for all lines in background

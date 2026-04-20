@@ -1,69 +1,103 @@
-import { PREBAKED_GEOMETRIES } from '../data/geometries'
-
 /**
- * Service de Routage Hybride (Statique + Pre-baked High Fidelity)
+ * Moteur de Routage "Ultra-Precision" (API Driven + Advanced Snap-to-Road)
  */
 
 export const GPS: Record<string, [number, number]> = {
   'palais': [14.6681, -17.4420], 'independance': [14.6698, -17.4388], 'sandaga': [14.6720, -17.4359], 'petersen': [14.6728, -17.4326], 'kermel': [14.6650, -17.4410],
-  'medina': [14.6837, -17.4507], 'fass': [14.6910, -17.4465], 'tilene': [14.6890, -17.4390],
-  'colobane': [14.6930, -17.4440], 'hlm': [14.7011, -17.4438], 'autoroute-hann': [14.7050, -17.4320], 'cyrnos': [14.6850, -17.4300],
+  'medina': [14.6837, -17.4507], 'fass': [14.6910, -17.4465], 'tilene': [14.6890, -17.4390], 'gueule-tapee': [14.6860, -17.4430],
+  'colobane': [14.6930, -17.4440], 'hlm': [14.7011, -17.4438], 'castors': [14.7055, -17.4465], 'dieuppeul': [14.7035, -17.4570], 'autoroute-hann': [14.7050, -17.4320], 'cyrnos': [14.6850, -17.4300],
   'liberte6': [14.7147, -17.4585], 'sacrecoeur': [14.7088, -17.4518], 'grand-yoff': [14.7226, -17.4555], 'patte-oie': [14.7229, -17.4481],
   'ouakam': [14.7340, -17.4900], 'ngor': [14.7470, -17.5130], 'yoff': [14.7530, -17.4740], 'aeroport': [14.7425, -17.4902],
   'pikine': [14.7473, -17.3867], 'thiaroye-gare': [14.7298, -17.3740], 'parcelles': [14.7853, -17.4277],
   'rufisque': [14.7165, -17.2718], 'diamniadio': [14.7180, -17.1830],
 }
 
+const LOCATIONIQ_KEY = 'pk.ef8f3d80db02a286ae4b6fae736af632'
+
 export type RoadGeometry = { coords: [number, number][], distances: number[], total: number }
 export const roadCache = new Map<string, RoadGeometry>()
 
 /**
- * Moteur de Routage "Perfect Path" (Pre-baked > Static > Fallback)
+ * Fallback "Safe Bitume" (Solution de Secours Locale)
+ * Si l'API échoue, on injecte manuellement les nœuds de l'autoroute.
  */
-function solveRoadPath(stopIds: string[], lineCode?: string): [number, number][] {
-  // 1. Priorité aux tracés pré-enregistrés haute-fidélité
-  if (lineCode && PREBAKED_GEOMETRIES[lineCode]) return PREBAKED_GEOMETRIES[lineCode]
-
-  const expanded: [number, number][] = []
-  for (let i = 0; i < stopIds.length - 1; i++) {
-    const s1 = stopIds[i], s2 = stopIds[i+1]; const c1 = GPS[s1], c2 = GPS[s2]
-    if (!c1 || !c2) continue; if (expanded.length === 0) expanded.push(c1)
-
-    // Logique de Bitume Mandatory (Baie de Dakar)
-    const isEast = (c: [number, number]) => c[1] > -17.41
-    const isWest = (c: [number, number]) => c[1] < -17.43
+function getSafeFallback(coords: [number, number][]): [number, number][] {
+  const result: [number, number][] = [coords[0]]
+  for (let i = 0; i < coords.length - 1; i++) {
+    const c1 = coords[i], c2 = coords[i+1]
+    const isEast = (c: [number,number]) => c[1] > -17.41
+    const isWest = (c: [number,number]) => c[1] < -17.435
     if ((isEast(c1) && isWest(c2)) || (isWest(c1) && isEast(c2))) {
-      if (isEast(c1)) expanded.push(GPS['patte-oie'], GPS['autoroute-hann'], GPS['colobane'], GPS['cyrnos'])
-      else expanded.push(GPS['cyrnos'], GPS['colobane'], GPS['autoroute-hann'], GPS['patte-oie'])
+      result.push([14.7000, -17.4350]) // Hann / Autoroute Bypass
+      result.push([14.6850, -17.4290]) // Cyrnos Bypass
     }
-    expanded.push(c2)
+    result.push(c2)
   }
-  return expanded.filter((c, i) => i === 0 || (c[0] !== expanded[i-1][0] || c[1] !== expanded[i-1][1]))
+  return result
+}
+
+/**
+ * Récupère le tracé réel (Direction API) avec Fallback Ultra-Sécurisé
+ */
+export async function getFullRoadPath(stopIds: string[]): Promise<RoadGeometry> {
+  const key = stopIds.join('|')
+  if (roadCache.has(key)) return roadCache.get(key)!
+
+  const stopsCoords = stopIds.map(id => GPS[id]).filter(Boolean)
+  let finalCoords: [number, number][] = getSafeFallback(stopsCoords)
+
+  if (stopsCoords.length >= 2) {
+    try {
+      const query = stopsCoords.map(c => `${c[1]},${c[0]}`).join(';')
+      const url = `https://us1.locationiq.com/v1/directions/driving/${query}?key=${LOCATIONIQ_KEY}&overview=full&geometries=geojson`
+      const res = await fetch(url)
+      if (res.ok) {
+        const data = await res.json()
+        if (data.routes?.[0]) {
+          finalCoords = data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]] as [number, number])
+        }
+      }
+    } catch (e) {
+      console.warn("LocationIQ Throttling - Using Safe Fallback")
+    }
+  }
+
+  const distances: number[] = [0]; let total = 0
+  for (let i = 0; i < finalCoords.length - 1; i++) {
+    const d = getDistanceKm(finalCoords[i][0], finalCoords[i][1], finalCoords[i+1][0], finalCoords[i+1][1])
+    total += d; distances.push(total)
+  }
+  const result = { coords: finalCoords, distances, total }
+  roadCache.set(key, result)
+  return result
+}
+
+// Version synchronisée vers le cache (pour l'UI rapide)
+export function getFullRoadPathSync(stopIds: string[]): RoadGeometry {
+  const key = stopIds.join('|')
+  if (roadCache.has(key)) return roadCache.get(key)!
+  
+  // Si pas en cache, on retourne le fallback immédiat et on lance le fetch en tâche de fond
+  const stopsCoords = stopIds.map(id => GPS[id]).filter(Boolean)
+  const fallback = getSafeFallback(stopsCoords)
+  
+  const distances: number[] = [0]; let total = 0
+  for (let i = 0; i < fallback.length - 1; i++) {
+    const d = getDistanceKm(fallback[i][0], fallback[i][1], fallback[i+1][0], fallback[i+1][1])
+    total += d; distances.push(total)
+  }
+  const result = { coords: fallback, distances, total }
+  
+  // Déclenchement de la récupération haute-définition en arrière-plan
+  getFullRoadPath(stopIds) 
+  
+  return result
 }
 
 export function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371; const dLat = (lat2-lat1)*(Math.PI/180); const dLon = (lon2-lon1)*(Math.PI/180)
   const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
-}
-
-export function getFullRoadPathSync(stopIds: string[], lineCode?: string): RoadGeometry {
-  const key = `${lineCode || ''}:${stopIds.join('|')}`
-  if (roadCache.has(key)) return roadCache.get(key)!
-
-  const coords = solveRoadPath(stopIds, lineCode)
-  const distances: number[] = [0]; let total = 0
-  for (let i = 0; i < coords.length - 1; i++) {
-    const d = getDistanceKm(coords[i][0], coords[i][1], coords[i+1][0], coords[i+1][1])
-    total += d; distances.push(total)
-  }
-  const result = { coords, distances, total }
-  roadCache.set(key, result)
-  return result
-}
-
-export async function getFullRoadPath(stopIds: string[], lineCode?: string): Promise<RoadGeometry> {
-  return getFullRoadPathSync(stopIds, lineCode)
 }
 
 export function interpolate(road: RoadGeometry, progress: number): [number, number] {
