@@ -1,54 +1,94 @@
 :root {
-  --driver-bg: #1e293b;
-  --driver-accent: #f59e0b;
-  --driver-text: #ffffff;
+  --driver-bg: #0f172a;
+  --driver-surface: #1e293b;
+  --driver-primary: #3b82f6;
+  --driver-accent: #10b981;
+  --driver-danger: #ef4444;
+  --driver-text: #f8fafc;
+  --driver-muted: #94a3b8;
 }
 
-body.driver-body {
+body {
   margin: 0;
-  font-family: 'Inter', sans-serif;
   background: var(--driver-bg);
   color: var(--driver-text);
+  font-family: 'Inter', system-ui, sans-serif;
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  height: 100vh;
 }
 
-#driver-app { flex: 1; display: flex; flex-direction: column; padding: 20px; }
+header {
+  padding: 24px;
+  background: var(--driver-surface);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #334155;
+}
 
-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
-.driver-id { font-weight: 800; font-size: 1.2rem; }
+.driver-id { font-weight: 800; font-size: 1.1rem; }
+.status-dot { width: 12px; height: 12px; background: #64748b; border-radius: 50%; }
+.status-dot.live { background: #10b981; box-shadow: 0 0 10px #10b981; }
 
-.trip-selector { flex: 1; display: flex; flex-direction: column; gap: 15px; }
+.trip-selector { padding: 24px; flex: 1; display: flex; flex-direction: column; }
+.selector-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
 
 .selector-card {
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.1);
-  padding: 20px;
+  background: var(--driver-surface);
+  border: 2px solid transparent;
+  padding: 16px;
   border-radius: 16px;
   cursor: pointer;
+  transition: 0.2s;
 }
-.selector-card.active { border-color: var(--driver-accent); background: rgba(245, 158, 11, 0.1); }
+.selector-card.active { border-color: var(--driver-primary); background: #3b82f611; }
+.selector-card strong { display: block; margin-bottom: 4px; font-size: 1rem; }
+.selector-card p { margin: 0; font-size: 0.8rem; color: var(--driver-muted); }
+.line-dot { width: 8px; height: 8px; border-radius: 50%; margin-bottom: 8px; }
 
 .big-btn {
-  height: 80px;
-  background: var(--driver-accent);
-  color: #000;
-  border: none;
+  width: 100%;
+  padding: 20px;
   border-radius: 20px;
-  font-size: 1.5rem;
-  font-weight: 900;
-  margin-top: 20px;
+  border: none;
+  background: var(--driver-accent);
+  color: white;
+  font-weight: 800;
+  font-size: 1.2rem;
   cursor: pointer;
+  box-shadow: 0 10px 20px rgba(16, 185, 129, 0.2);
+}
+.big-btn:disabled { opacity: 0.5; filter: grayscale(1); }
+.big-btn.stop-now { background: var(--driver-danger); box-shadow: 0 10px 20px rgba(239, 68, 68, 0.2); }
+
+.on-trip-view { padding: 24px; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.live-status { font-size: 0.9rem; font-weight: 800; color: var(--driver-accent); letter-spacing: 2px; margin-bottom: 12px; }
+
+.trip-metrics { width: 100%; display: flex; gap: 12px; margin-bottom: 24px; }
+.metric { background: var(--driver-surface); padding: 20px; border-radius: 20px; flex: 1; }
+.metric span { display: block; font-size: 0.8rem; color: var(--driver-muted); margin-bottom: 4px; }
+.metric strong { font-size: 1.8rem; }
+
+.progress-bar-driver { width: 100%; height: 12px; background: #334155; border-radius: 6px; margin-bottom: 48px; overflow: hidden; }
+.progress-bar-driver div { height: 100%; background: var(--driver-primary); transition: 1s linear; }
+
+/* Alerts */
+.driver-alert {
+  background: #fef2f2;
+  border: 2px solid #ef4444;
+  margin: 12px 24px;
+  padding: 16px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  animation: slideDown 0.3s ease-out;
+  color: #1e293b;
 }
 
-.on-trip-view { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; }
-.live-status { font-size: 3rem; font-weight: 900; color: #10b981; animation: blink 1.5s infinite; }
+@keyframes slideDown { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-@keyframes blink { 
-    0% { opacity: 1; }
-    50% { opacity: 0.5; }
-    100% { opacity: 1; }
-}
-
-.stop-now { background: #ef4444; color: #fff; }
+.alert-icon { font-size: 1.5rem; }
+.alert-body { flex: 1; }
+.ack-btn { background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 800; cursor: pointer; }

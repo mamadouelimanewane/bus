@@ -1,5 +1,6 @@
-import { buses, lines, stops } from '../data/network'
+import { stops, lines, buses } from '../data/network'
 import type { ApiNetwork, ApiSnapshot, Bus, Line, PlannerJourney, Prediction, RouteMetrics, SearchResult, Stop } from '../types'
+import { GPS, getDistanceKm, roadCache } from './routing'
 
 export const stopById = new Map(stops.map((stop) => [stop.id, stop]))
 export const lineById = new Map(lines.map((line) => [line.id, line]))
@@ -34,8 +35,27 @@ function getLine(lineId: string): Line | null {
 
 export function getRouteMetrics(line: Line): RouteMetrics {
   const cached = routeCache.get(line.id)
-  if (cached) {
-    return cached
+  if (cached) return cached
+
+  // On essaie d'utiliser le tracé routier réel s'il est déjà en cache mémoire
+  const road = roadCache.get(`liq_${line.stopIds.join('|')}`)
+  
+  if (road) {
+    const stopRatios: Record<string, number> = {}
+    line.stopIds.forEach((id, index) => {
+      // Trouver l'indice du stop dans la polyline (approximation par l'id du stop)
+      // On simplifie en utilisant l'index relatif des stops originaux sur la distance totale
+      stopRatios[id] = index / (line.stopIds.length - 1) 
+    })
+    
+    const metrics = { 
+      points: line.stopIds.map(id => stopById.get(id)!).filter(Boolean), 
+      segments: road.distances, 
+      totalLength: road.total, 
+      stopRatios 
+    }
+    routeCache.set(line.id, metrics)
+    return metrics
   }
 
   const points = line.stopIds
@@ -48,7 +68,8 @@ export function getRouteMetrics(line: Line): RouteMetrics {
   for (let index = 0; index < points.length - 1; index += 1) {
     const current = points[index]
     const next = points[index + 1]
-    const length = Math.hypot(next.x - current.x, next.y - current.y)
+    const c1 = GPS[current.id], c2 = GPS[next.id]
+    const length = (c1 && c2) ? getDistanceKm(c1[0], c1[1], c2[0], c2[1]) : Math.hypot(next.x - current.x, next.y - current.y)
     segments.push(length)
     totalLength += length
   }
@@ -66,36 +87,11 @@ export function getRouteMetrics(line: Line): RouteMetrics {
 }
 
 export function getPointAlongLine(line: Line, progress: number): { x: number; y: number } {
-  const { points, segments, totalLength } = getRouteMetrics(line)
-  if (points.length === 0) {
-    return { x: 0, y: 0 }
-  }
-  if (points.length === 1 || totalLength === 0) {
-    return { x: points[0].x, y: points[0].y }
-  }
-
-  const normalized = ((progress % 1) + 1) % 1
-  const targetDistance = normalized * totalLength
-  let traversed = 0
-
-  for (let index = 0; index < segments.length; index += 1) {
-    const segmentLength = segments[index]
-    const start = points[index]
-    const end = points[index + 1]
-
-    if (traversed + segmentLength >= targetDistance) {
-      const localProgress = segmentLength === 0 ? 0 : (targetDistance - traversed) / segmentLength
-      return {
-        x: start.x + (end.x - start.x) * localProgress,
-        y: start.y + (end.y - start.y) * localProgress,
-      }
-    }
-
-    traversed += segmentLength
-  }
-
-  const last = points.at(-1) ?? points[0]
-  return { x: last.x, y: last.y }
+  // Cette fonction est devenue secondaire car main.ts utilise interpolate() de routing.ts
+  // On garde un fallback simplifié pour la compatibilité
+  const stopIndex = Math.floor(progress * (line.stopIds.length - 1))
+  const stop = stopById.get(line.stopIds[stopIndex]) || stops[0]
+  return { x: stop.x, y: stop.y }
 }
 
 export function getOccupancyLabel(bus: Bus): string {

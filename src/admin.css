@@ -13,6 +13,19 @@
   --radius-sm: 6px;
   --radius-md: 10px;
   --shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  
+  --ddd-color: #1e88e5;
+  --aftu-color: #fb8c00;
+}
+
+.admin-ddd {
+  --admin-primary: #1e88e5;
+  --admin-accent: #1565c0;
+}
+
+.admin-aftu {
+  --admin-primary: #fb8c00;
+  --admin-accent: #e65100;
 }
 
 * { box-sizing: border-box; }
@@ -21,8 +34,9 @@ body {
   margin: 0;
   background-color: var(--admin-bg);
   color: var(--admin-text);
-  font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
   overflow: hidden;
+  height: 100vh;
 }
 
 .admin-layout {
@@ -49,9 +63,8 @@ body {
 }
 
 .admin-logo h1 {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 1.3rem;
-  font-weight: 700;
+  font-size: 1.2rem;
+  font-weight: 800;
   color: white;
   margin: 0;
   letter-spacing: -0.5px;
@@ -73,8 +86,8 @@ body {
   color: var(--admin-muted);
   text-decoration: none;
   font-size: 0.9rem;
-  font-weight: 500;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  font-weight: 600;
+  transition: all 0.2s;
   cursor: pointer;
   border: none;
   background: transparent;
@@ -84,6 +97,8 @@ body {
 
 .nav-link:hover { background: var(--admin-surface-hover); color: white; }
 .nav-link-active { background: rgba(88, 166, 255, 0.1); color: var(--admin-primary); }
+.admin-ddd .nav-link-active { background: rgba(30, 136, 229, 0.1); }
+.admin-aftu .nav-link-active { background: rgba(251, 140, 0, 0.1); }
 
 .sidebar-footer { margin-top: auto; padding-top: 20px; border-top: 1px solid var(--admin-border); }
 
@@ -91,7 +106,12 @@ body {
 .admin-main {
   padding: 32px 48px;
   overflow-y: auto;
-  background: radial-gradient(circle at top right, rgba(88, 166, 255, 0.05), transparent 400px);
+  position: relative;
+}
+
+.command-center {
+  padding: 0 !important;
+  overflow: hidden !important;
 }
 
 .admin-header {
@@ -102,9 +122,8 @@ body {
 }
 
 .header-title h2 {
-  font-family: 'Space Grotesk', sans-serif;
   font-size: 1.8rem;
-  font-weight: 700;
+  font-weight: 800;
   color: white;
   margin: 0 0 4px 0;
 }
@@ -143,14 +162,14 @@ body {
 }
 
 .table-header { padding: 20px 24px; border-bottom: 1px solid var(--admin-border); }
-.table-header h3 { margin: 0; font-size: 1.1rem; font-weight: 600; color: white; }
+.table-header h3 { margin: 0; font-size: 1.1rem; font-weight: 700; color: white; }
 
 .data-table { width: 100%; border-collapse: collapse; }
 .data-table th {
   padding: 12px 24px;
   text-align: left;
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--admin-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -163,12 +182,12 @@ body {
 .btn {
   padding: 10px 20px;
   border-radius: var(--radius-sm);
-  font-weight: 600;
+  font-weight: 700;
   font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s;
   border: 1px solid var(--admin-border);
-  background: var(--admin-bg), transparent;
+  background: var(--admin-bg);
   color: white;
   display: inline-flex;
   align-items: center;
@@ -179,10 +198,61 @@ body {
 .btn-ghost { background: transparent; border: none; color: var(--admin-muted); }
 .btn-danger { color: var(--admin-danger); }
 
-.badge { padding: 4px 10px; border-radius: 99px; font-size: 0.75rem; font-weight: 600; }
+.badge { padding: 4px 10px; border-radius: 99px; font-size: 0.75rem; font-weight: 700; }
 .badge-green { background: rgba(63, 185, 80, 0.15); color: #3fb950; }
 .badge-blue { background: rgba(88, 166, 255, 0.15); color: #58a6ff; }
 .badge-orange { background: rgba(255, 180, 59, 0.15); color: #f5b43b; }
+
+/* Command Center Map */
+.command-map-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: #111;
+}
+
+#command-map {
+  width: 100%;
+  height: 100%;
+}
+
+.map-overlay-card {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  z-index: 1000;
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  border-radius: 12px;
+  padding: 20px;
+  width: 280px;
+  box-shadow: var(--shadow);
+}
+
+.map-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.map-title h3 { margin: 0; font-size: 1.1rem; font-weight: 700; }
+
+.live-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: #3fb950;
+  font-weight: 700;
+}
+
+.fleet-stat-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
 
 .modal-overlay {
   position: fixed;
@@ -217,9 +287,6 @@ body {
   font-size: 0.9rem;
 }
 
-.field-group { margin-bottom: 20px; }
-.field-group label { display: block; font-size: 0.85rem; color: var(--admin-muted); margin-bottom: 8px; margin-top: 8px;}
-
 .asset-card {
   background: var(--admin-surface);
   border: 1px solid var(--admin-border);
@@ -227,7 +294,6 @@ body {
   padding: 24px;
   transition: 0.2s;
 }
-.asset-card:hover { border-color: var(--admin-primary); transform: translateY(-2px); }
 
 .pulse-live {
   width: 8px;
@@ -235,7 +301,6 @@ body {
   background: #3fb950;
   border-radius: 50%;
   display: inline-block;
-  margin-right: 8px;
   animation: pulse 2s infinite;
 }
 
@@ -245,13 +310,20 @@ body {
   100% { box-shadow: 0 0 0 0 rgba(63, 185, 80, 0); }
 }
 
-.empty-state {
-  text-align: center;
-  padding: 60px;
-  color: var(--admin-muted);
-  border: 1px dashed var(--admin-border);
-  border-radius: var(--radius-md);
+.leaflet-container {
+  background: #111 !important;
 }
 
-.badge-red { background: rgba(218, 54, 51, 0.15); color: #da3633; }
-.btn-green { color: #3fb950 !important; }
+.leaflet-tile {
+  filter: invert(100%) hue-rotate(180deg) brightness(85%) contrast(110%);
+}
+
+.blinking-bus {
+  animation: busStrobe 1s infinite;
+}
+
+@keyframes busStrobe {
+  0% { filter: drop-shadow(0 0 0px #ef4444); opacity: 1; }
+  50% { filter: drop-shadow(0 0 15px #ef4444); opacity: 0.7; }
+  100% { filter: drop-shadow(0 0 0px #ef4444); opacity: 1; }
+}

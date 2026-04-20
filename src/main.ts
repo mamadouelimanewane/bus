@@ -1,5 +1,6 @@
 import { buses, lines, stops } from './data/network'
 import { getPredictions, getSearchResults, tickBuses, formatEta, escapeHtml, findJourneys } from './lib/transit'
+import { GPS, getFullRoadPath, interpolate, roadCache } from './lib/routing'
 import './style.css'
 
 declare const L: any
@@ -17,59 +18,15 @@ let plannerPicking: 'origin' | 'destination' | null = null
 let lineFilter: 'all' | 'DDD' | 'AFTU-TATA' = 'all'
 let mapOperatorFilter: 'all' | 'DDD' | 'AFTU-TATA' = 'all'
 let showIncident = false
+let isDarkMode = false
+let showStats = false
 let leafletMap: any = null
 let canvasRenderer: any = null
 let busCircles: Map<string, any> = new Map()
 let routePolyline: any = null
-
-// ── Coordonnées GPS avec Waypoints pour éviter la mer ───────────────────────
-const GPS: Record<string, [number, number]> = {
-  'palais': [14.6681, -17.4420], 'independance': [14.6698, -17.4388], 'sandaga': [14.6720, -17.4359], 'petersen': [14.6728, -17.4326], 'kermel': [14.6650, -17.4410], 'rebeuss': [14.6590, -17.4352], 'republique': [14.6690, -17.4401], 'dakar-ponty': [14.6740, -17.4430],
-  'medina': [14.6837, -17.4507], 'fass': [14.6910, -17.4465], 'tilene': [14.6890, -17.4390], 'biscuiterie': [14.6970, -17.4380], 'gueule-tapee': [14.6860, -17.4430],
-  'colobane': [14.6930, -17.4440], 'hlm': [14.7011, -17.4438], 'castors': [14.7055, -17.4465], 'dieuppeul': [14.7035, -17.4570],
-  'liberte6': [14.7147, -17.4585], 'sacrecoeur': [14.7088, -17.4518], 'grand-yoff': [14.7226, -17.4555], 'patte-oie': [14.7229, -17.4481], 'foire': [14.7560, -17.4430], 'nord-foire': [14.7565, -17.4380],
-  'fann': [14.6877, -17.4635], 'point-e': [14.6980, -17.4590], 'stele-mermoz': [14.7175, -17.4730], 'mermoz': [14.7120, -17.4720], 'virage': [14.7200, -17.4720], 'cite-etudiants': [14.7050, -17.4600], 'ouakam': [14.7340, -17.4900], 'almadies': [14.7460, -17.5220], 'ngor': [14.7470, -17.5130], 'yoff': [14.7530, -17.4740], 'aeroport': [14.7425, -17.4902],
-  'pikine': [14.7473, -17.3867], 'bounkheling': [14.7450, -17.3820], 'golf-sud': [14.7390, -17.4220], 'camp-penal': [14.7296, -17.4100], 'wakam': [14.7200, -17.3950], 'diamaguene': [14.7520, -17.3800], 'cite-sotrac': [14.7450, -17.3950], 'thiaroye-azur': [14.7342, -17.3700], 'thiaroye-gare': [14.7298, -17.3740],
-  'parcelles': [14.7853, -17.4277], 'cambrene': [14.7912, -17.4232], 'guediawaye': [14.7783, -17.4020], 'hamo4': [14.7630, -17.4050], 'cite-comico': [14.7700, -17.4150], 'sipres': [14.7680, -17.3880], 'dakar-eaux-forets': [14.7500, -17.4100],
-  'yeumbeul': [14.7622, -17.3527], 'malika': [14.7756, -17.3176], 'mbao': [14.7191, -17.3480], 'keur-mbaye-fall': [14.7170, -17.3440], 'keur-massar': [14.7090, -17.3364], 'zac-mbao': [14.7200, -17.3400], 'route-nationale': [14.7400, -17.3600],
-  'rufisque': [14.7165, -17.2718], 'bargny': [14.7050, -17.2280], 'diamniadio': [14.7180, -17.1830], 'sebikotane': [14.7280, -17.1320],
-  // Waypoints techniques pour forcer le tracé sur terre/routes
-  'w-yarakh': [14.7170, -17.4250],   // Contournement baie de Hann
-  'w-corniche': [14.6950, -17.4720], // Corniche Ouest pour éviter de traverser la mer vers Ouakam
-  'w-autoroute': [14.7050, -17.4350], // Autoroute vers Patte Oie
-  'w-camp': [14.7350, -17.4050],     // Détour Pikine Nord
-}
-
-/**
- * Cette fonction garantit que le tracé suit une logique routière.
- * Elle injecte des waypoints entre certains arrêts problématiques (ceux dont la ligne droite traverse l'eau).
- */
-function getPathWithWaypoints(stops: string[]): [number, number][] {
-  const final: [number, number][] = []
-  for (let i = 0; i < stops.length; i++) {
-    const sId = stops[i]; const coord = GPS[sId]; if (!coord) continue
-    final.push(coord)
-    if (i < stops.length - 1) {
-      const a = sId, b = stops[i+1]
-      // Éviter la Baie de Hann (Dakar -> Pikine)
-      if (((a==='colobane' || a==='petersen' || a==='sandaga' || a==='medina') && (b==='pikine' || b==='thiaroye-gare')) ||
-          ((b==='colobane' || b==='petersen' || b==='sandaga' || b==='medina') && (a==='pikine' || a==='thiaroye-gare'))) {
-          final.push(GPS['w-yarakh'])
-      }
-      // Éviter la mer Corniche Ouest (Fann -> Ouakam/Mermoz)
-      if (((a==='fann' || a==='fass' || a==='medina') && (b==='ouakam' || b==='mermoz' || b==='ngor' || b==='almadies')) ||
-          ((b==='fann' || b==='fass' || b==='medina') && (a==='ouakam' || a==='mermoz' || a==='ngor' || a==='almadies'))) {
-          final.push(GPS['w-corniche'])
-      }
-      // Dakar -> Parcelle/Grand Yoff via Autoroute
-      if (((a==='colobane' || a==='petersen') && (b==='patte-oie' || b==='grand-yoff' || b==='parcelles')) ||
-          ((b==='colobane' || b==='petersen') && (a==='patte-oie' || a==='grand-yoff' || a==='parcelles'))) {
-          final.push(GPS['w-autoroute'])
-      }
-    }
-  }
-  return final
-}
+let routeDecorators: any = null
+let stopsLayer: any = null
+let busesLayer: any = null
 
 const CORRIDORS_RAW = [['palais','sandaga','petersen','medina','gueule-tapee','colobane','pikine','thiaroye-gare','rufisque','bargny','diamniadio','sebikotane'], ['palais','dakar-ponty','tilene','biscuiterie','hlm','dieuppeul','castors','liberte6','sacrecoeur','grand-yoff','patte-oie','nord-foire','parcelles','cambrene','guediawaye'], ['palais','fann','stele-mermoz','mermoz','ouakam','almadies','ngor','yoff']]
 
@@ -78,55 +35,183 @@ const appEl = document.querySelector<HTMLDivElement>('#app')!
 const mapLayer = document.createElement('div'); mapLayer.id = 'map-layer'; mapLayer.style.cssText = 'position:absolute;inset:0;z-index:0;'; appEl.appendChild(mapLayer)
 const uiLayer = document.createElement('div'); uiLayer.id = 'ui-layer'; uiLayer.style.cssText = 'position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;pointer-events:none;'; appEl.appendChild(uiLayer)
 
-function initMap() {
+const BUS_SVG = `<svg viewBox="0 0 24 24" width="32" height="32" fill="white"><path d="M18,11H6V6H18M16.5,17A1.5,1.5 0 0,1 15,15.5A1.5,1.5 0 0,1 16.5,14A1.5,1.5 0 0,1 18,15.5A1.5,1.5 0 0,1 16.5,17M7.5,17A1.5,1.5 0 0,1 6,15.5A1.5,1.5 0 0,1 7.5,14A1.5,1.5 0 0,1 9,15.5A1.5,1.5 0 0,1 7.5,17M4,16c0,0.88 0.39,1.67 1,2.22V20a1,1 0 0,0 1,1h1a1,1 0 0,0 1-1v-1h8v1a1,1 0 0,0 1,1h1a1,1 0 0,0 1-1v-1.78c0.61,-0.55 1,-1.34 1,-2.22V6c0,-3.5 -3.58,-4 -8,-4c-4.42,0 -8,0.5 -8,4V16Z" /></svg>`
+const ARROW_SVG = `<svg viewBox="0 0 24 24" width="16" height="16" fill="white" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5))"><path d="M12,2L4.5,20.29L5.21,21L12,18L18.79,21L19.5,20.29L12,2Z" /></svg>`
+const GARE_SVG = `<svg viewBox="0 0 24 24" width="24" height="24" fill="#1565c0"><path d="M12,2L4,11V21H20V11L12,2M12,4.42L18,11.16V19H14V13H10V19H6V11.16L12,4.42M11,11V12H13V11H11Z" /></svg>`
+
+const GARES = ['palais', 'petersen', 'colobane', 'aeroport', 'pikine', 'rufisque', 'diamniadio']
+
+async function initMap() {
   if (leafletMap) { leafletMap.invalidateSize(); return }
   if (typeof L === 'undefined') return
   canvasRenderer = L.canvas({ padding: 0.5 })
   leafletMap = L.map('map-layer', { zoomControl: false, minZoom: 11, maxZoom: 18 }).setView([14.7137, -17.4300], 12)
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(leafletMap)
+  
+  stopsLayer = L.layerGroup().addTo(leafletMap)
+  busesLayer = L.layerGroup().addTo(leafletMap)
+  routeDecorators = L.layerGroup().addTo(leafletMap)
+
   const userIcon = L.divIcon({ className:'', html:'<div class="user-dot-marker"></div>', iconSize:[20,20], iconAnchor:[10,10]})
   L.marker([14.7137, -17.4300], { icon: userIcon, zIndexOffset: 2000 }).addTo(leafletMap)
-  CORRIDORS_RAW.forEach(cor => {
-    const coords = getPathWithWaypoints(cor)
-    if (coords.length >= 2) L.polyline(coords, { color:'#9ca3af', weight:2, opacity:0.4 }).addTo(leafletMap)
-  })
+
+  // Tracer les corridors principaux avec le routage réel
+  for (const cor of CORRIDORS_RAW) {
+    const road = await getFullRoadPath(cor)
+    L.polyline(road.coords, { color:'#9ca3af', weight:2, opacity:0.3 }).addTo(leafletMap)
+  }
+
   stops.forEach(stop => {
     const c = GPS[stop.id]; if(!c) return
-    const icon = L.divIcon({ className:'', html:'<div class="stop-marker"></div>', iconSize:[9,9], iconAnchor:[4.5,4.5] })
-    L.marker(c, { icon, zIndexOffset: 500 }).on('click', () => {
+    const isGare = GARES.includes(stop.id)
+    
+    const icon = L.divIcon({ 
+      className: '', 
+      html: isGare 
+        ? `<div class="gare-marker">${GARE_SVG}</div>` 
+        : '<div class="stop-marker"></div>', 
+      iconSize: isGare ? [30, 30] : [9, 9], 
+      iconAnchor: isGare ? [15, 15] : [4.5, 4.5] 
+    })
+
+    L.marker(c, { icon, zIndexOffset: isGare ? 1000 : 500 }).on('click', () => {
       if (plannerPicking==='origin') { plannerOrigin=stop.id; plannerPicking=null; activeTab='planner' }
       else if (plannerPicking==='destination') { plannerDestination=stop.id; plannerPicking=null; activeTab='planner' }
       else { selectedStopId=stop.id; trackedBusId=null }
       render()
-    }).addTo(leafletMap)
+    }).addTo(stopsLayer)
   })
 }
 
-function updateBusMarkers() {
+/**
+ * Ajoute des flèches directionnelles sur une polyline
+ */
+function decorateRoute(road: any, color: string) {
+  if (routeDecorators) routeDecorators.clearLayers()
+  const coords = road.coords
+  const step = Math.max(5, Math.floor(coords.length / 10)) // ~10 flèches par tracé
+  
+  for (let i = 0; i < coords.length - 1; i += step) {
+    if (i + 1 >= coords.length) break
+    const p1 = coords[i], p2 = coords[i+1]
+    const angle = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) * (180 / Math.PI)
+    
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="transform: rotate(${angle + 90}deg); opacity:0.9;">${ARROW_SVG.replace('white', color)}</div>`,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8]
+    })
+    L.marker(p1, { icon, interactive: false }).addTo(routeDecorators)
+  }
+}
+
+async function updateBusMarkers() {
   if (!leafletMap) return
   if (routePolyline) { leafletMap.removeLayer(routePolyline); routePolyline = null }
-  buses.forEach(bus => {
-    const line = lines.find(l => l.id === bus.lineId); if (!line) return
+  if (routeDecorators) routeDecorators.clearLayers()
+
+  // Masquer ou afficher les arrêts selon si on suit un bus
+  if (trackedBusId) {
+    if (leafletMap.hasLayer(stopsLayer)) leafletMap.removeLayer(stopsLayer)
+  } else {
+    if (!leafletMap.hasLayer(stopsLayer)) stopsLayer.addTo(leafletMap)
+  }
+
+  for (const bus of buses) {
+    const line = lines.find(l => l.id === bus.lineId); if (!line) continue
     const isT = bus.id === trackedBusId
-    if (trackedBusId && !isT) { const ex=busCircles.get(bus.id); if(ex) ex.setStyle({opacity:0,fillOpacity:0}); return }
-    if (!trackedBusId && mapOperatorFilter!=='all' && line.operatorId!==mapOperatorFilter) { const ex=busCircles.get(bus.id); if(ex) ex.setStyle({opacity:0,fillOpacity:0}); return }
-    const coords = getPathWithWaypoints(line.stopIds)
-    if (coords.length < 2) return
-    if (isT) routePolyline = L.polyline(coords, { color:line.color, weight:6, opacity:0.8, dashArray:'10,10' }).addTo(leafletMap)
-    const ts = coords.length-1, sc = bus.progress*ts, seg = Math.min(Math.floor(sc), ts-1), t = sc-seg
-    const fr = coords[seg], to = coords[seg+1], lat = fr[0]+(to[0]-fr[0])*t, lng = fr[1]+(to[1]-fr[1])*t
-    const rad = line.operatorId==='DDD'?(isT?12:6):(isT?10:4), col = isT?'#22c55e':line.color
-    if(busCircles.has(bus.id)){ busCircles.get(bus.id)!.setLatLng([lat,lng]).setStyle({radius:rad,fillColor:col,color:'#fff',weight:isT?4:1.5,opacity:1,fillOpacity:1}) }
-    else { const c = L.circleMarker([lat,lng], {renderer:canvasRenderer,radius:rad,fillColor:col,fillOpacity:1,color:'#fff',weight:isT?4:1.5}); c.on('click',()=>{trackedBusId=bus.id;selectedStopId=null;render()}); c.addTo(leafletMap); busCircles.set(bus.id,c) }
-    if (isT && (window as any)._lastTrackedPos !== `${lat},${lng}`) { leafletMap.panTo([lat,lng],{animate:true,duration:1}); (window as any)._lastTrackedPos = `${lat},${lng}` }
-  })
+    
+    // Filtres
+    if (trackedBusId && !isT) { const ex=busCircles.get(bus.id); if(ex) ex.remove(); continue }
+    if (!trackedBusId && mapOperatorFilter!=='all' && line.operatorId!==mapOperatorFilter) { const ex=busCircles.get(bus.id); if(ex) ex.remove(); continue }
+
+    const road = await getFullRoadPath(line.stopIds)
+    if (road.coords.length < 2) continue
+
+    if (isT) {
+      routePolyline = L.polyline(road.coords, { color:line.color, weight:6, opacity:0.8, dashArray:'10,10' }).addTo(leafletMap)
+      decorateRoute(road, line.color)
+    }
+    
+    const [lat, lng] = interpolate(road, bus.progress)
+    
+    if(busCircles.has(bus.id)) {
+      const marker = busCircles.get(bus.id)
+      
+      if (isT) {
+        // Si c'est le bus suivi et qu'il n'est pas encore une figure de bus
+        if (!(marker instanceof L.Marker)) {
+          marker.remove()
+          const busIcon = L.divIcon({ 
+            className: 'bus-figure-container',
+            html: `
+              <div class="bus-plate-badge">${bus.plate}</div>
+              <div class="bus-figure" style="background:${line.color};">${BUS_SVG}</div>
+            `,
+            iconSize: [80, 60],
+            iconAnchor: [40, 50]
+          })
+          const newMarker = L.marker([lat, lng], { icon: busIcon, zIndexOffset: 3000 }).addTo(leafletMap)
+          newMarker.on('click', () => { trackedBusId = bus.id; render() })
+          busCircles.set(bus.id, newMarker)
+        } else {
+          marker.setLatLng([lat, lng])
+        }
+      } else {
+        // Bus normaux (points)
+        if (marker instanceof L.Marker) {
+           marker.remove()
+           busCircles.delete(bus.id)
+        } else {
+           const rad = line.operatorId==='DDD'?6:4, col = line.color
+           marker.setLatLng([lat,lng]).setStyle({radius:rad,fillColor:col,color:'#fff',weight:1.5,opacity:1,fillOpacity:1})
+        }
+      }
+    } else { 
+      // Création initiale
+      if (isT) {
+        const busIcon = L.divIcon({ 
+          className: 'bus-figure-container',
+          html: `
+            <div class="bus-plate-badge">${bus.plate}</div>
+            <div class="bus-figure" style="background:${line.color};">${BUS_SVG}</div>
+          `,
+          iconSize: [80, 60],
+          iconAnchor: [40, 50]
+        })
+        const m = L.marker([lat, lng], { icon: busIcon, zIndexOffset: 3000 }).addTo(leafletMap)
+        m.on('click', () => { trackedBusId = bus.id; render() })
+        busCircles.set(bus.id, m)
+      } else {
+        const rad = line.operatorId==='DDD'?6:4, col = line.color
+        const c = L.circleMarker([lat,lng], {renderer:canvasRenderer,radius:rad,fillColor:col,fillOpacity:1,color:'#fff',weight:1.5}); 
+        c.on('click',()=>{trackedBusId=bus.id;selectedStopId=null;render()}); 
+        c.addTo(leafletMap); 
+        busCircles.set(bus.id,c) 
+      }
+    }
+    
+    if (isT && (window as any)._lastTrackedPos !== `${lat},${lng}`) { 
+      leafletMap.panTo([lat,lng],{animate:true,duration:1}); 
+      (window as any)._lastTrackedPos = `${lat},${lng}` 
+    }
+  }
 }
 
+
 function render() {
+  if (isDarkMode) document.body.classList.add('dark')
+  else document.body.classList.remove('dark')
+
   const isMapTab = activeTab === 'map'
   mapLayer.style.display = 'block'
   if (isMapTab) {
     uiLayer.innerHTML = renderMapOverlay()
+    setTimeout(() => {
+      if (isDarkMode) document.getElementById('map-layer')?.classList.add('dark-map')
+      else document.getElementById('map-layer')?.classList.remove('dark-map')
+    }, 10)
   } else {
     uiLayer.innerHTML = `<div class="page" style="flex:1;overflow:hidden;display:flex;flex-direction:column;pointer-events:auto;">${renderPage()}</div><div style="pointer-events:auto;">${renderTabBar()}</div>`
   }
@@ -140,16 +225,25 @@ function renderMapOverlay() {
   const tracked = trackedBusId ? buses.find(b => b.id === trackedBusId) : null
   const dddCount = buses.filter(b => lines.find(l=>l.id===b.lineId)?.operatorId==='DDD').length
   const aftuCount = buses.length - dddCount
+
   return `
     <div class="map-overlay" style="flex:1;display:flex;flex-direction:column;pointer-events:none;">
       ${plannerPicking ? `<div style="height:100px;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;padding-top:40px;pointer-events:auto;box-shadow:var(--shadow);"><strong>Sélectionnez l'arrêt ${plannerPicking==='origin'?'de départ':'de destination'}</strong><button id="cancel-picking" style="margin-left:10px;background:rgba(0,0,0,0.2);border:none;color:#fff;padding:4px 8px;border-radius:4px;">Annuler</button></div>` : `
       <div style="padding:44px 12px 0;display:flex;gap:8px;align-items:flex-start;pointer-events:none;">
         <div style="display:flex;gap:6px;pointer-events:auto;">
-          ${['all','DDD','AFTU-TATA'].map(f => `<button class="op-filter-btn ${mapOperatorFilter===f?'active':''}" data-op="${f}" style="padding:6px 12px;border-radius:20px;border:none;font-size:12px;font-weight:700;background:${mapOperatorFilter===f?(f==='DDD'?'#1565c0':f==='AFTU-TATA'?'#e65100':'#3aaa60'):'rgba(255,255,255,0.92)'};color:${mapOperatorFilter===f?'#fff':'#333'};">${f==='all'?'Tous':f}</button>`).join('')}
+          ${['all','DDD','AFTU-TATA'].map(f => `<button class="op-filter-btn ${mapOperatorFilter===f?'active':''}" data-op="${f}" style="padding:6px 12px;border-radius:20px;border:none;font-size:12px;font-weight:700;background:${mapOperatorFilter===f?(f==='DDD'?'#1565c0':f==='AFTU-TATA'?'#e65100':'#3aaa60'):'var(--white)'};color:${mapOperatorFilter===f?'#fff':'var(--text)'};box-shadow:var(--shadow);">${f==='all'?'Tous':f}</button>`).join('')}
+          <button id="toggle-dark" style="padding:6px 12px;border-radius:20px;border:none;background:var(--white);box-shadow:var(--shadow);pointer-events:auto;">${isDarkMode?'🌞':'🌙'}</button>
         </div>
-        <div style="pointer-events:auto;margin-left:auto;display:flex;flex-direction:column;gap:6px;">
-          <div class="fleet-pill" style="background:rgba(21,101,192,0.92);"><strong>DDD</strong> · ${dddCount}</div>
-          <div class="fleet-pill" style="background:rgba(230,81,0,0.92);"><strong>AFTU</strong> · ${aftuCount}</div>
+        <div style="pointer-events:auto;margin-left:auto;display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+          <button id="toggle-stats" style="padding:6px 14px;border-radius:20px;background:var(--white);border:none;box-shadow:var(--shadow);font-size:12px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px;">📊 Stats ${showStats?'▲':'▼'}</button>
+          ${showStats ? `
+            <div style="background:var(--white);padding:12px;border-radius:14px;box-shadow:var(--shadow-lg);min-width:140px;border:1px solid var(--border);">
+              <div style="font-size:10px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Live Dakar</div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:12px;color:var(--muted)">Connectés</span><span style="font-weight:700;">${buses.length}</span></div>
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:12px;color:var(--muted)">DDD</span><span style="font-weight:700;color:#1565c0">${dddCount}</span></div>
+              <div style="display:flex;justify-content:space-between;"><span style="font-size:12px;color:var(--muted)">AFTU</span><span style="font-weight:700;color:#e65100">${aftuCount}</span></div>
+            </div>
+          ` : ''}
         </div>
       </div>`}
       <div style="flex:1;"></div>
@@ -164,7 +258,41 @@ function renderMapBottomBar() {
 
 function renderBusTrackingSheet(bus: any) {
   const line = lines.find(l => l.id === bus.lineId)!
-  return `<div class="stop-sheet" style="pointer-events:auto;"><div class="sheet-handle"></div><button class="sheet-close" id="close-sheet">✕</button><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><div style="background:${line.color};color:#fff;padding:6px 14px;border-radius:10px;font-weight:800;">${line.code}</div><div><div class="stop-sheet-title">🚌 ${bus.id}</div><div class="stop-sheet-sub">${bus.plate}</div></div></div><button class="btn-outline" id="untrack-btn">Arrêter le suivi</button></div>`
+  const progressPerc = Math.round(bus.progress * 100)
+  const nextIdx = Math.floor(bus.progress * (line.stopIds.length - 1)) + 1
+  const nextStopName = stopById.get(line.stopIds[nextIdx])?.name || 'Terminus'
+
+  return `
+    <div class="stop-sheet" style="pointer-events:auto;">
+      <div class="sheet-handle"></div>
+      <button class="sheet-close" id="close-sheet">✕</button>
+      
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+        <div style="background:${line.color};color:#fff;padding:8px 16px;border-radius:12px;font-weight:900;font-size:20px;box-shadow:0 4px 12px ${line.color}44;">${line.code}</div>
+        <div style="flex:1">
+          <div style="font-size:16px;font-weight:700;color:var(--text)">${line.name}</div>
+          <div style="font-size:12px;color:var(--muted)">Immat. <span style="font-family:monospace;font-weight:700;color:var(--text)">${bus.plate}</span></div>
+        </div>
+      </div>
+
+      <div style="background:var(--bg);padding:14px;border-radius:14px;margin-bottom:16px;border:1px solid var(--border);">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;font-weight:700;">
+          <span>Progression Live</span>
+          <span>${progressPerc}%</span>
+        </div>
+        <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;position:relative;">
+          <div style="position:absolute;height:100%;background:${line.color};width:${progressPerc}%;transition:width 0.4s ease-out;"></div>
+        </div>
+        <div style="margin-top:12px;font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;">
+          ⏱️ Prochain arrêt : <strong>${nextStopName}</strong>
+        </div>
+      </div>
+
+      <div class="sheet-actions">
+        <button class="btn-danger" id="untrack-btn">Quitter le suivi</button>
+        <button class="btn-outline" onclick="alert('Signalement envoyé pour ${bus.plate}')">⚠️ Signaler</button>
+      </div>
+    </div>`
 }
 
 function renderStopSheet(stop: any) {
@@ -201,7 +329,29 @@ function renderLines() {
   return `<div class="page-header"><h2>Lignes Dakar</h2></div><div class="filter-row">${['all','DDD','AFTU-TATA'].map(fl=>`<button class="filter-chip ${lineFilter===fl?'active':''}" data-filter="${fl}">${fl}</button>`).join('')}</div><div class="lines-list">${f.slice(0,50).map(l=>`<div class="line-card" data-line-id="${l.id}"><div class="line-number" style="background:${l.color}">${l.code}</div><div class="line-info">${l.name}</div></div>`).join('')}</div>`
 }
 
-function renderProfile() { return `<div style="background:var(--green);padding:40px 16px 20px;color:#fff;"><h3>Profil</h3></div>` }
+function renderProfile() { 
+  return `
+    <div style="background:var(--green);padding:48px 16px 24px;color:#fff;">
+      <h2 style="font-size:24px;font-weight:800;">Administration</h2>
+      <p style="opacity:0.8;font-size:14px;">Accès sécurisé opérateurs</p>
+    </div>
+    <div class="profile-scroll-fix">
+      <div class="action-cards" style="margin-top:20px;">
+        <a href="admin_ddd.html" class="action-card" style="text-decoration:none;">
+          <div class="action-icon" style="background:#1565c022;color:#1565c0">D</div>
+          <div class="action-label">Backoffice DDD</div>
+          <div class="action-chevron">→</div>
+        </a>
+        <a href="admin_aftu.html" class="action-card" style="text-decoration:none;">
+          <div class="action-icon" style="background:#e6510022;color:#e65100">A</div>
+          <div class="action-label">Backoffice AFTU</div>
+          <div class="action-chevron">→</div>
+        </a>
+      </div>
+      <div style="text-align:center;padding:20px;color:var(--muted);font-size:12px;">SunuBus v2.8 • Command Center Engine</div>
+    </div>
+  ` 
+}
 
 function renderTabBar() {
   return `<div class="bottom-tab-bar">${[{id:'map',l:'Carte'},{id:'planner',l:'Trajet'},{id:'search',l:'Lignes'},{id:'lines',l:'Réseau'}].map(t=>`<button class="tab-btn ${activeTab===t.id?'active':''}" data-tab="${t.id}">${t.l}</button>`).join('')}</div>`
@@ -210,9 +360,13 @@ function renderTabBar() {
 function attachListeners() {
   uiLayer.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', (e) => { activeTab = (e.currentTarget as any).dataset.tab; plannerPicking = null; render() }))
   uiLayer.querySelectorAll('.op-filter-btn').forEach(b => b.addEventListener('click', (e) => { mapOperatorFilter = (e.currentTarget as any).dataset.op; render() }))
+  uiLayer.querySelector('#toggle-dark')?.addEventListener('click', () => { isDarkMode = !isDarkMode; render() })
+  uiLayer.querySelector('#toggle-stats')?.addEventListener('click', () => { showStats = !showStats; render() })
+  uiLayer.querySelector('#cancel-picking')?.addEventListener('click', () => { plannerPicking = null; render() })
+  uiLayer.querySelector('#untrack-btn')?.addEventListener('click', () => { trackedBusId = null; render() })
+  uiLayer.querySelector('#close-sheet')?.addEventListener('click', () => { selectedStopId = null; trackedBusId = null; render() })
   uiLayer.querySelector('#go-search')?.addEventListener('click', () => { activeTab = 'search'; render() })
   uiLayer.querySelector('#go-planner')?.addEventListener('click', () => { activeTab = 'planner'; render() })
-  uiLayer.querySelector('#close-sheet')?.addEventListener('click', () => { selectedStopId = null; if (routePolyline) leafletMap.removeLayer(routePolyline); routePolyline = null; trackedBusId = null; render() })
   uiLayer.querySelector('#untrack-btn')?.addEventListener('click', () => { if (routePolyline) leafletMap.removeLayer(routePolyline); routePolyline = null; trackedBusId = null; render() })
   uiLayer.querySelector('#cancel-picking')?.addEventListener('click', () => { plannerPicking = null; render() })
   if (activeTab==='planner') {
@@ -226,11 +380,29 @@ function attachListeners() {
   const sIn = uiLayer.querySelector<HTMLInputElement>('#search-input')
   if (sIn) sIn.addEventListener('input', (e:any) => { searchQuery = e.target.value; const b = document.getElementById('search-results-body'); if(b){b.innerHTML=renderSearchBody();attachSearchBodyListeners()} })
   uiLayer.querySelectorAll('.filter-chip').forEach(b => b.addEventListener('click', (e:any) => { lineFilter = e.currentTarget.dataset.filter; render() }))
+  uiLayer.querySelectorAll('.line-card').forEach(b => b.addEventListener('click', (e:any) => { 
+    const lId = e.currentTarget.dataset.lineId
+    const bus = buses.find(x => x.lineId === lId)
+    if (bus) {
+      trackedBusId = bus.id
+      selectedStopId = null
+      activeTab = 'map'
+      render()
+    }
+  }))
   attachSearchBodyListeners()
 }
 
 function attachSearchBodyListeners() {
-  uiLayer.querySelectorAll('.result-item').forEach(b => b.addEventListener('click', (e:any) => { const sId = e.currentTarget.dataset.stopId; if (sId) { selectedStopId = sId; activeTab='map'; render() } }))
+  uiLayer.querySelectorAll('.result-item').forEach(b => b.addEventListener('click', (e:any) => { 
+    const sId = e.currentTarget.dataset.stopId
+    const lId = e.currentTarget.dataset.lineId
+    if (sId) { selectedStopId = sId; activeTab='map'; render() }
+    else if (lId) {
+      const bus = buses.find(x => x.lineId === lId)
+      if (bus) { trackedBusId = bus.id; selectedStopId = null; activeTab = 'map'; render() }
+    }
+  }))
 }
 
 function handlePlannerInput(query: string, type: 'origin' | 'destination') {

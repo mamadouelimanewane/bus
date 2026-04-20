@@ -46,6 +46,24 @@ html, body {
   --shadow-lg: 0 8px 32px rgba(0,0,0,0.18);
 }
 
+.dark {
+  --green: #2ecc71;
+  --green-dark: #27ae60;
+  --white: #1a1a1a;
+  --bg: #0d0d0d;
+  --border: #333333;
+  --text: #eeeeee;
+  --muted: #888888;
+  --shadow: 0 4px 16px rgba(0,0,0,0.5);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.7);
+}
+
+.dark-map .leaflet-tile-container {
+  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+}
+
+body { transition: background 0.3s, color 0.3s; }
+
 /* ── Map Overlay Controls ─────────────────────────────────────────────── */
 .map-overlay {
   flex: 1;
@@ -697,6 +715,56 @@ html, body {
 }
 
 /* ── Custom Map Markers ───────────────────────────────────────────────── */
+.bus-figure-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content:center;
+}
+.bus-plate-badge {
+  background: white;
+  color: #333;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-family: 'Roboto Mono', monospace;
+  font-weight: 800;
+  font-size: 11px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  margin-bottom: 6px;
+  border: 1.5px solid #000;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.bus-figure {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  border: 2px solid #fff;
+  transition: transform 0.2s;
+  animation: busPulse 2s infinite;
+}
+@keyframes busPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+.gare-marker {
+  width: 30px;
+  height: 30px;
+  background: #fff;
+  border: 2px solid #1565c0;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
 .user-dot-marker {
   width: 20px;
   height: 20px;
