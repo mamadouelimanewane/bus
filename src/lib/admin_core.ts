@@ -28,157 +28,122 @@ export class AdminCore {
 
   private async init() {
     await this.loadData()
-    this.buses.forEach(b => this.fleetHealth.set(b.id, { fuel: 80 + Math.random() * 20, temp: 40 + Math.random() * 20, lastMaintenance: '2026-03-15' }))
+    this.buses.forEach(b => {
+        if (!this.fleetHealth.has(b.id)) {
+            this.fleetHealth.set(b.id, { fuel: 80 + Math.random() * 20, temp: 40 + Math.random() * 20, lastMaintenance: '2026-03-15' })
+        }
+    })
     this.render()
     setInterval(() => this.tick(), 1000)
   }
 
-  private checkIncidents() {
-    return JSON.parse(localStorage.getItem('sunubus_incidents') || '[]').filter((inc:any) => !inc.resolved)
-  }
-
-  private checkGeofence() {
-    return JSON.parse(localStorage.getItem('sunubus_geofence') || '[]')
-  }
+  private checkIncidents() { return JSON.parse(localStorage.getItem('sunubus_incidents') || '[]').filter((inc:any) => !inc.resolved) }
+  private checkGeofence() { return JSON.parse(localStorage.getItem('sunubus_geofence') || '[]') }
 
   private async loadData() {
+    const localLines = JSON.parse(localStorage.getItem(`sunubus_lines_${this.operatorId}`) || 'null')
+    const localBuses = JSON.parse(localStorage.getItem(`sunubus_buses_${this.operatorId}`) || 'null')
+
     try {
       const network = await fetchNetwork()
-      this.buses = network.buses.filter(b => {
+      this.buses = localBuses || network.buses.filter(b => {
         const line = network.lines.find(l => l.id === b.lineId)
         return line?.operatorId === this.operatorId
       })
-      this.lines = network.lines.filter(l => l.operatorId === this.operatorId)
+      this.lines = localLines || network.lines.filter(l => l.operatorId === this.operatorId)
     } catch (err) {
-      this.buses = staticBuses.filter(b => {
+      this.buses = localBuses || staticBuses.filter(b => {
         const line = staticLines.find(l => l.id === b.lineId)
         return line?.operatorId === this.operatorId
       })
-      this.lines = staticLines.filter(l => l.operatorId === this.operatorId)
+      this.lines = localLines || staticLines.filter(l => l.operatorId === this.operatorId)
     }
+  }
+
+  private saveData() {
+    localStorage.setItem(`sunubus_lines_${this.operatorId}`, JSON.stringify(this.lines))
+    localStorage.setItem(`sunubus_buses_${this.operatorId}`, JSON.stringify(this.buses))
   }
 
   private tick() {
     const activeIncidents = this.checkIncidents()
-
     this.buses.forEach(bus => {
-      const isBroken = activeIncidents.some((inc:any) => inc.busId === bus.id)
-      const health = this.fleetHealth.get(bus.id)!
-      
-      if (!isBroken) {
-        bus.progress += 0.001
-        if (bus.progress > 1) bus.progress = 0
-        health.fuel = Math.max(0, health.fuel - 0.05)
-        health.temp = Math.min(110, health.temp + (Math.random() * 0.1))
-      } else {
-          health.temp = Math.max(30, health.temp - 0.2)
-      }
+      const isBroken = activeIncidents.some((inc:any) => inc.busId === bus.id); const health = this.fleetHealth.get(bus.id)
+      if (health && !isBroken) {
+        bus.progress += 0.001; if (bus.progress > 1) bus.progress = 0
+        health.fuel = Math.max(0, health.fuel - 0.05); health.temp = Math.min(110, health.temp + (Math.random() * 0.1))
+      } else if (health) health.temp = Math.max(30, health.temp - 0.2)
     })
-    
-    if (this.currentView === 'command' && this.map) {
-      this.updateMapMarkers()
-    } else if (this.currentView === 'dashboard' || this.currentView === 'fleet' || this.currentView === 'geofencing') {
-      this.render()
-    }
+    if (this.currentView === 'command' && this.map) this.updateMapMarkers()
+    else if (['dashboard','fleet','lines'].includes(this.currentView)) this.render()
   }
 
   private updateMapMarkers() {
-    const activeIncidents = this.checkIncidents()
-    const geofenceBreaches = this.checkGeofence()
-    
+    const activeIncidents = this.checkIncidents(); const geofenceBreaches = this.checkGeofence()
     this.buses.forEach(bus => {
-      const line = this.lines.find(l => l.id === bus.lineId)
-      if (!line) return
-      
-      const s1 = staticStops.find((s:Stop) => s.id === line.stopIds[0])
-      const s2 = staticStops.find((s:Stop) => s.id === line.stopIds[line.stopIds.length-1])
-      if (!s1 || !s2) return
-
-      const isBroken = activeIncidents.some((inc:any) => inc.busId === bus.id)
-      const isOffRoute = geofenceBreaches.some((b:any) => b.busId === bus.id)
-      
-      const lat = s1.y + (s2.y - s1.y) * bus.progress + (isOffRoute ? 0.005 : 0)
-      const lng = s1.x + (s2.x - s1.x) * bus.progress + (isOffRoute ? 0.005 : 0)
-
-      let marker = this.busMarkers.get(bus.id)
-      const color = isBroken ? '#ef4444' : (isOffRoute ? '#eab308' : line.color)
-      
+      const line = this.lines.find(l => l.id === bus.lineId); if (!line) return
+      const s1 = staticStops.find((s:Stop) => s.id === line.stopIds[0]); const s2 = staticStops.find((s:Stop) => s.id === line.stopIds[line.stopIds.length-1]); if (!s1 || !s2) return
+      const isBroken = activeIncidents.some((inc:any) => inc.busId === bus.id); const isOff = geofenceBreaches.some((b:any) => b.busId === bus.id)
+      const lat = s1.y + (s2.y - s1.y) * bus.progress + (isOff ? 0.005 : 0); const lng = s1.x + (s2.x - s1.x) * bus.progress + (isOff ? 0.005 : 0)
+      let marker = this.busMarkers.get(bus.id); const color = isBroken ? '#ef4444' : (isOff ? '#eab308' : line.color)
       if (!marker) {
-        marker = (window as any).L.circleMarker([lat, lng], {
-          radius: (isBroken || isOffRoute) ? 12 : 8,
-          fillColor: color,
-          fillOpacity: 1,
-          color: '#fff',
-          weight: (isBroken || isOffRoute) ? 4 : 2,
-          className: isBroken ? 'blinking-bus' : ''
-        }).addTo(this.map)
-        marker.bindPopup(`<strong>Bus ${bus.plate}</strong>`)
-        this.busMarkers.set(bus.id, marker)
-      } else {
-        marker.setLatLng([lat, lng])
-        marker.setStyle({ fillColor: color, radius: (isBroken || isOffRoute) ? 12 : 8, weight: (isBroken || isOffRoute) ? 4 : 2 })
-      }
+        marker = (window as any).L.circleMarker([lat, lng], { radius: (isBroken || isOff) ? 12 : 8, fillColor: color, fillOpacity: 1, color: '#fff', weight: (isBroken || isOff) ? 4 : 2, className: isBroken ? 'blinking-bus' : '' }).addTo(this.map)
+        marker.bindPopup(`<strong>Bus ${bus.plate}</strong>`); this.busMarkers.set(bus.id, marker)
+      } else { marker.setLatLng([lat, lng]); marker.setStyle({ fillColor: color, radius: (isBroken || isOff) ? 12 : 8, weight: (isBroken || isOff) ? 4 : 2 }) }
     })
   }
 
-  private exportData() {
-    const header = "BusID,Plaque,Ligne,Carburant,Temp,Statut\n"
-    const rows = this.buses.map(b => {
-      const h = this.fleetHealth.get(b.id)!
-      const line = this.lines.find(l => l.id === b.lineId)?.code || 'N/A'
-      return `${b.id},${b.plate},${line},${Math.round(h.fuel)}%,${Math.round(h.temp)}°C,OK`
-    }).join("\n")
-    
-    const blob = new Blob([header + rows], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `rapport_sunubus_${this.operatorId}_${new Date().toISOString().slice(0,10)}.csv`
-    a.click()
+  private addLine() {
+    const name = prompt("Nom de la ligne (ex: Liberté 6 - Gare) :")
+    const code = prompt("Code de la ligne (ex: 404) :")
+    if (name && code) {
+      const newLine: Line = { id: `line-${Date.now()}`, code, name, operatorId: this.operatorId as any, color: '#'+Math.floor(Math.random()*16777215).toString(16), stopIds: ['palais','sandaga'], baseMinutes: 45, frequencyMin: 15 }
+      this.lines.push(newLine); this.saveData(); this.render()
+    }
+  }
+
+  private deleteLine(id: string) {
+    if (confirm("Supprimer cette ligne ?")) {
+      this.lines = this.lines.filter(l => l.id !== id); this.saveData(); this.render()
+    }
+  }
+
+  private reassignBus(busId: string) {
+    const options = this.lines.map((l, i) => `${i}: Ligne ${l.code} (${l.name})`).join("\n")
+    const choice = prompt(`Choisir une nouvelle ligne pour le bus :\n${options}`)
+    if (choice !== null) {
+      const idx = parseInt(choice); if (this.lines[idx]) {
+        const bus = this.buses.find(b => b.id === busId); if (bus) {
+          bus.lineId = this.lines[idx].id; this.saveData(); this.render()
+        }
+      }
+    }
   }
 
   private renderDashboard() {
-    const activeIncidents = this.checkIncidents()
-    const geofenceBreaches = this.checkGeofence()
-    const totalCap = this.buses.reduce((a,b)=>a+b.capacity, 0)
-    const totalPass = this.buses.reduce((a,b)=>a+b.passengers, 0)
-    const load = Math.round((totalPass/totalCap)*100) || 0
-    const lowFuelCount = Array.from(this.fleetHealth.values()).filter(h => h.fuel < 20).length
+    const totalCap = this.buses.reduce((a,b)=>a+b.capacity, 0); const totalPass = this.buses.reduce((a,b)=>a+b.passengers, 0); const load = Math.round((totalPass/totalCap)*100) || 0
+    const lowFuel = Array.from(this.fleetHealth.values()).filter(h => h.fuel < 20).length; const activeInc = this.checkIncidents()
+    return `<div class="admin-header"><h2>Intelligence Flotte</h2><button class="btn btn-primary" id="btn-export">📊 Rapport</button></div><div class="stats-grid"><div class="stat-card" style="${lowFuel>0?'border-color:#f59e0b':''}"><div class="stat-label">Alertes Énergie</div><div class="stat-value">${lowFuel}</div></div><div class="stat-card" style="${activeInc.length>0?'border-color:#ef4444':''}"><div class="stat-label">Pannes</div><div class="stat-value">${activeInc.length}</div></div><div class="stat-card"><div class="stat-label">Lignes Actives</div><div class="stat-value">${this.lines.length}</div></div><div class="stat-card"><div class="stat-label">Charge</div><div class="stat-value">${load}%</div></div></div>`
+  }
 
+  private renderLines() {
     return `
-      <div class="admin-header">
-        <div class="header-title"><h2>Intelligence Flotte</h2><p>Analyse et performance ${this.operatorId}.</p></div>
-        <button class="btn btn-primary" id="btn-export">📊 Exporter CSV</button>
-      </div>
-      <div class="stats-grid" style="margin-top:24px;">
-        <div class="stat-card" style="${lowFuelCount > 0 ? 'border-color:#f59e0b' : ''}"><div class="stat-label">Alertes Énergie</div><div class="stat-value" style="color:${lowFuelCount > 0 ? '#f59e0b' : 'inherit'}">${lowFuelCount}</div></div>
-        <div class="stat-card" style="${activeIncidents.length > 0 ? 'border-color:#ef4444' : ''}"><div class="stat-label">Pannes</div><div class="stat-value" style="color:${activeIncidents.length > 0 ? '#ef4444' : 'inherit'}">${activeIncidents.length}</div></div>
-        <div class="stat-card"><div class="stat-label">Écart Itinéraire</div><div class="stat-value">${geofenceBreaches.length}</div></div>
-        <div class="stat-card"><div class="stat-label">Charge Flotte</div><div class="stat-value">${load}%</div></div>
-      </div>
+      <div class="admin-header"><div><h2>Réseau de Lignes</h2><p>CRUD de configuration des parcours ${this.operatorId}</p></div><button class="btn btn-primary" id="btn-add-line">+ Nouvelle Ligne</button></div>
       <div class="table-container">
-        <div class="table-header"><h3>🛠️ Maintenance Préventive</h3></div>
         <table class="data-table">
-          <thead><tr><th>Bus</th><th>Carburant</th><th>Temp.</th><th>État</th></tr></thead>
+          <thead><tr><th>Code</th><th>Nom</th><th>Stations</th><th>Actions</th></tr></thead>
           <tbody>
-            ${this.buses.slice(0,5).map(b => {
-              const h = this.fleetHealth.get(b.id)!; const isW = h.fuel < 25 || h.temp > 90
-              return `<tr><td><strong>${b.plate}</strong></td><td><div style="width:100px; height:8px; background:#334155; border-radius:4px; overflow:hidden;"><div style="width:${h.fuel}%; height:100%; background:${h.fuel < 25 ? '#ef4444' : '#10b981'}"></div></div><span style="font-size:10px">${Math.round(h.fuel)}%</span></td><td><span style="color:${h.temp>90?'#ef4444':'inherit'}">${Math.round(h.temp)}°C</span></td><td><span class="badge ${isW?'badge-orange':'badge-green'}">${isW?'Vérification':'Optimal'}</span></td></tr>`
-            }).join('')}
+            ${this.lines.map(l => `<tr><td><span class="badge" style="background:${l.color}22; color:${l.color}; font-weight:800">${l.code}</span></td><td>${l.name}</td><td>${l.stopIds.length} arrêts</td><td><button class="btn btn-ghost" onclick="alert('Modification avancée bientôt disponible')">✏️</button><button class="btn btn-ghost btn-delete-line" data-id="${l.id}" style="color:var(--admin-danger)">🗑️</button></td></tr>`).join('')}
           </tbody>
         </table>
       </div>
     `
   }
 
-  private renderCommand() {
-    return `<div class="command-map-container"><div id="command-map"></div><div class="map-overlay-card"><div class="map-title"><span class="pulse-live"></span><h3>Commandement</h3></div><div class="fleet-stat-row"><span>Bus Actifs</span><strong>${this.buses.length}</strong></div><div class="fleet-stat-row" style="color:#ef4444"><span>Pannes</span><strong>${this.checkIncidents().length}</strong></div><div class="fleet-stat-row" style="color:#eab308"><span>Hors Trajet</span><strong>${this.checkGeofence().length}</strong></div></div></div>`
-  }
-
   private renderFleet() {
-    return `<div class="admin-header"><h2>Ma Flotte</h2></div><div class="table-container"><table class="data-table"><thead><tr><th>Bus</th><th>Énergie</th><th>Plan</th><th>Actions</th></tr></thead><tbody>${this.buses.map(b => {
-      const h = this.fleetHealth.get(b.id)!
-      return `<tr><td><strong>${b.plate}</strong></td><td>${Math.round(h.fuel)}%</td><td>L<sup>e</sup> ${this.lines.find(l=>l.id===b.lineId)?.code}</td><td><button class="btn btn-ghost" onclick="alert('Plein effectué')">⚡ Refaire le plein</button><button class="btn btn-ghost btn-message" data-bus-id="${b.id}">💬</button></td></tr>`
+    return `<div class="admin-header"><h2>Ma Flotte</h2></div><div class="table-container"><table class="data-table"><thead><tr><th>Bus</th><th>Ligne Actuelle</th><th>Énergie</th><th>Actions</th></tr></thead><tbody>${this.buses.map(b => {
+      const h = this.fleetHealth.get(b.id)!; const l = this.lines.find(line=>line.id===b.lineId)
+      return `<tr><td><strong>${b.plate}</strong></td><td><span class="badge" style="background:var(--admin-accent)22; color:var(--admin-accent)">${l?`Ligne ${l.code}`:'NON AFFECTÉ'}</span></td><td>${Math.round(h.fuel)}%</td><td><button class="btn btn-ghost btn-reassign" data-id="${b.id}" style="color:var(--admin-primary)">🔄 Réaffecter</button><button class="btn btn-ghost" onclick="alert('Plein fait')">⚡</button></td></tr>`
     }).join('')}</tbody></table></div>`
   }
 
@@ -188,6 +153,7 @@ export class AdminCore {
     const links: { view: AdminView; label: string; icon: string }[] = [
       { view: 'dashboard', label: 'Surveillance', icon: 'M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z' },
       { view: 'command', label: 'Commandement', icon: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z' },
+      { view: 'lines', label: 'Réseau Lignes', icon: 'M20 7V5c0-1.1-.9-2-2-2H6c-1.1 0-2 .9-2 2v2c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2z' },
       { view: 'fleet', label: 'Ma Flotte', icon: 'M18 11H6V5h12m0 12H6v-3h12M17 2H7c-1.1 0-2 .9-2 2v15c0 1.1.9 2 2 2v2h1v-2h8v2h1v-2c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z' }
     ]
     return `<aside class="admin-sidebar"><div class="admin-logo"><h1>${this.operatorId}</h1></div><nav class="admin-nav">${links.map(l=>`<button class="nav-link ${this.currentView===l.view?'nav-link-active':''}" data-view="${l.view}"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="${l.icon}"/></svg>${l.label}</button>`).join('')}</nav></aside>`
@@ -195,12 +161,16 @@ export class AdminCore {
 
   public render() {
     if(!this.root) return; let content = ''
-    switch(this.currentView){case 'dashboard':content=this.renderDashboard();break;case 'command':content=this.renderCommand();break;case 'fleet':content=this.renderFleet();break;}
+    switch(this.currentView){case 'dashboard':content=this.renderDashboard();break;case 'command':content=`<div class="command-map-container"><div id="command-map"></div></div>`;break;case 'fleet':content=this.renderFleet();break;case 'lines':content=this.renderLines();break;}
     this.root.innerHTML = `<div class="admin-layout ${this.currentView==='command'?'command-center':''}">${this.renderSidebar()}<main class="admin-main">${content}</main></div>`
     this.root.querySelectorAll('.nav-link[data-view]').forEach(btn=>btn.addEventListener('click',()=>this.setView((btn as HTMLElement).dataset.view as AdminView)))
-    this.root.querySelectorAll('.btn-message').forEach(btn => btn.addEventListener('click', (e) => { const id = (e.currentTarget as HTMLElement).dataset.busId; if (id) {
-        const msg = prompt('Message:'); if(msg) { const m = JSON.parse(localStorage.getItem('sunubus_messages')||'[]'); m.push({id:Date.now(),to:id,text:msg,read:false,from:this.operatorId}); localStorage.setItem('sunubus_messages',JSON.stringify(m)) }
-    } }))
-    this.root.querySelector('#btn-export')?.addEventListener('click', () => this.exportData())
+    this.root.querySelector('#btn-export')?.addEventListener('click', () => {
+        const header = "BusID,Plaque,Ligne,Carburant,Temp\n"
+        const rows = this.buses.map(b => `${b.id},${b.plate},${b.lineId},${Math.round(this.fleetHealth.get(b.id)!.fuel)}%,${Math.round(this.fleetHealth.get(b.id)!.temp)}°C`).join("\n")
+        const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([header + rows], { type: 'text/csv' })); a.download = `rapport_${this.operatorId}.csv`; a.click()
+    })
+    this.root.querySelector('#btn-add-line')?.addEventListener('click', () => this.addLine())
+    this.root.querySelectorAll('.btn-delete-line').forEach(btn => btn.addEventListener('click', (e) => this.deleteLine((e.currentTarget as HTMLElement).dataset.id!)))
+    this.root.querySelectorAll('.btn-reassign').forEach(btn => btn.addEventListener('click', (e) => this.reassignBus((e.currentTarget as HTMLElement).dataset.id!)))
   }
 }
