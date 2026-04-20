@@ -1,6 +1,7 @@
 import { fetchNetwork } from './api'
 import type { Bus, Line, Stop } from '../types'
 import { buses as staticBuses, lines as staticLines, stops as staticStops } from '../data/network'
+import { getFullRoadPath, interpolate } from './routing'
 
 export type AdminView = 'dashboard' | 'fleet' | 'lines' | 'command' | 'alerts' | 'geofencing'
 
@@ -34,7 +35,7 @@ export class AdminCore {
         }
     })
     this.render()
-    setInterval(() => this.tick(), 1000)
+    setInterval(() => this.tick(), 2000)
   }
 
   private checkIncidents() { return JSON.parse(localStorage.getItem('sunubus_incidents') || '[]').filter((inc:any) => !inc.resolved) }
@@ -70,7 +71,7 @@ export class AdminCore {
     this.buses.forEach(bus => {
       const isBroken = activeIncidents.some((inc:any) => inc.busId === bus.id); const health = this.fleetHealth.get(bus.id)
       if (health && !isBroken) {
-        bus.progress += 0.001; if (bus.progress > 1) bus.progress = 0
+        bus.progress += 0.0015; if (bus.progress > 1) bus.progress = 0
         health.fuel = Math.max(0, health.fuel - 0.05); health.temp = Math.min(110, health.temp + (Math.random() * 0.1))
       } else if (health) health.temp = Math.max(30, health.temp - 0.2)
     })
@@ -78,19 +79,34 @@ export class AdminCore {
     else if (['dashboard','fleet','lines'].includes(this.currentView)) this.render()
   }
 
-  private updateMapMarkers() {
+  private async updateMapMarkers() {
     const activeIncidents = this.checkIncidents(); const geofenceBreaches = this.checkGeofence()
-    this.buses.forEach(bus => {
-      const line = this.lines.find(l => l.id === bus.lineId); if (!line) return
-      const s1 = staticStops.find((s:Stop) => s.id === line.stopIds[0]); const s2 = staticStops.find((s:Stop) => s.id === line.stopIds[line.stopIds.length-1]); if (!s1 || !s2) return
+    for (const bus of this.buses) {
+      const line = this.lines.find(l => l.id === bus.lineId); if (!line) continue
+      
+      const road = await getFullRoadPath(line.stopIds)
+      if (road.coords.length < 2) continue
+
       const isBroken = activeIncidents.some((inc:any) => inc.busId === bus.id); const isOff = geofenceBreaches.some((b:any) => b.busId === bus.id)
-      const lat = s1.y + (s2.y - s1.y) * bus.progress + (isOff ? 0.005 : 0); const lng = s1.x + (s2.x - s1.x) * bus.progress + (isOff ? 0.005 : 0)
+      const [lat, lng] = interpolate(road, bus.progress)
+      
       let marker = this.busMarkers.get(bus.id); const color = isBroken ? '#ef4444' : (isOff ? '#eab308' : line.color)
+      
       if (!marker) {
-        marker = (window as any).L.circleMarker([lat, lng], { radius: (isBroken || isOff) ? 12 : 8, fillColor: color, fillOpacity: 1, color: '#fff', weight: (isBroken || isOff) ? 4 : 2, className: isBroken ? 'blinking-bus' : '' }).addTo(this.map)
+        marker = (window as any).L.circleMarker([lat + (isOff?0.005:0), lng + (isOff?0.005:0)], { 
+            radius: (isBroken || isOff) ? 12 : 8, 
+            fillColor: color, 
+            fillOpacity: 1, 
+            color: '#fff', 
+            weight: (isBroken || isOff) ? 4 : 2, 
+            className: isBroken ? 'blinking-bus' : '' 
+        }).addTo(this.map)
         marker.bindPopup(`<strong>Bus ${bus.plate}</strong>`); this.busMarkers.set(bus.id, marker)
-      } else { marker.setLatLng([lat, lng]); marker.setStyle({ fillColor: color, radius: (isBroken || isOff) ? 12 : 8, weight: (isBroken || isOff) ? 4 : 2 }) }
-    })
+      } else { 
+          marker.setLatLng([lat + (isOff?0.005:0), lng + (isOff?0.005:0)]); 
+          marker.setStyle({ fillColor: color, radius: (isBroken || isOff) ? 12 : 8, weight: (isBroken || isOff) ? 4 : 2 }) 
+      }
+    }
   }
 
   private addLine() {

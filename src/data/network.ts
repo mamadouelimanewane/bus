@@ -59,6 +59,8 @@ export const stops: Stop[] = [
   { id:'cite-sotrac',     name:'Cité Sotrac',           x:68, y:55, district:'Pikine'  },
   { id:'thiaroye-azur',   name:'Thiaroye Azur',         x:80, y:65, district:'Banlieue' },
   { id:'thiaroye-gare',   name:'Thiaroye Gare',         x:78, y:68, district:'Banlieue' },
+  { id:'autoroute-hann',  name:'Autoroute (Hann)',      x:60, y:65, district:'Maritime' },
+  { id:'cyrnos',          name:'Cyrnos',                x:40, y:70, district:'Port'     },
   // BANLIEUE NORD
   { id:'parcelles',       name:'Parcelles Assainies',   x:75, y:25, district:'Unité 15' },
   { id:'cambrene',        name:'Cambérène',             x:78, y:20, district:'Cambérène' },
@@ -120,17 +122,17 @@ function v5(base: string[]): string[][] {
 // 30 ROUTES DE BASE DDD (bus urbains DakarDemDikk)
 // ─────────────────────────────────────────────────────────────────────────────
 const DDD_BASE: string[][] = [
-  ['palais','sandaga','petersen','medina','gueule-tapee','colobane','pikine'],
+  ['palais','sandaga','petersen','cyrnos','autoroute-hann','colobane','pikine'],
   ['palais','dakar-ponty','tilene','biscuiterie','hlm','dieuppeul','castors','liberte6','sacrecoeur','grand-yoff'],
   ['palais','sandaga','petersen','tilene','fass','hlm','castors','liberte6','sacrecoeur','grand-yoff','patte-oie','parcelles'],
   ['palais','sandaga','fann','stele-mermoz','mermoz','ouakam'],
   ['palais','fann','stele-mermoz','mermoz','ouakam','almadies','ngor','yoff'],
-  ['palais','sandaga','petersen','medina','colobane','pikine','thiaroye-azur','thiaroye-gare'],
-  ['palais','sandaga','petersen','medina','colobane','pikine','thiaroye-gare','mbao','rufisque'],
+  ['palais','cyrnos','autoroute-hann','colobane','pikine','thiaroye-azur','thiaroye-gare'],
+  ['palais','cyrnos','autoroute-hann','colobane','pikine','thiaroye-gare','mbao','rufisque'],
   ['palais','sandaga','petersen','fass','hlm','castors','liberte6','sacrecoeur','grand-yoff','patte-oie'],
   ['colobane','camp-penal','golf-sud','pikine','cite-sotrac','hamo4','guediawaye'],
   ['colobane','biscuiterie','hlm','dieuppeul','castors','liberte6','sacrecoeur','grand-yoff'],
-  ['medina','fass','colobane','pikine','thiaroye-azur','thiaroye-gare','yeumbeul'],
+  ['cyrnos','autoroute-hann','colobane','pikine','thiaroye-azur','thiaroye-gare','yeumbeul'],
   ['pikine','thiaroye-azur','thiaroye-gare','route-nationale','rufisque','bargny'],
   ['pikine','cite-sotrac','dakar-eaux-forets','guediawaye','hamo4','sipres','cambrene'],
   ['fann','point-e','virage','cite-etudiants','liberte6','grand-yoff','patte-oie','nord-foire','parcelles'],
@@ -156,10 +158,10 @@ const DDD_BASE: string[][] = [
 // 40 ROUTES DE BASE AFTU-TATA (car rapides / minibus banlieue)
 // ─────────────────────────────────────────────────────────────────────────────
 const AFTU_BASE: string[][] = [
-  ['palais','medina','colobane','pikine','thiaroye-gare','yeumbeul','malika'],
-  ['palais','medina','colobane','pikine','thiaroye-gare','mbao','rufisque','bargny'],
-  ['palais','medina','colobane','pikine','diamaguene','cite-sotrac','guediawaye','sipres','cambrene'],
-  ['colobane','pikine','thiaroye-azur','thiaroye-gare','route-nationale','yeumbeul','malika'],
+  ['palais','cyrnos','autoroute-hann','colobane','pikine','thiaroye-gare','yeumbeul', 'malika'],
+  ['palais','cyrnos','autoroute-hann','colobane','pikine','thiaroye-gare','mbao','rufisque','bargny'],
+  ['palais','cyrnos','autoroute-hann','colobane','pikine','diamaguene','cite-sotrac','guediawaye','sipres','cambrene'],
+  ['autoroute-hann','colobane','pikine','thiaroye-azur','thiaroye-gare','route-nationale','yeumbeul','malika'],
   ['pikine','zac-mbao','mbao','keur-mbaye-fall','keur-massar','rufisque'],
   ['thiaroye-gare','route-nationale','rufisque','bargny','diamniadio','sebikotane'],
   ['guediawaye','cite-comico','sipres','cambrene','parcelles','nord-foire','foire','patte-oie','grand-yoff'],
