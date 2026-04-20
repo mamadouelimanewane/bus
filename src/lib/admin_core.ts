@@ -68,17 +68,10 @@ export class AdminCore {
       if (!isBroken) {
         bus.progress += 0.001
         if (bus.progress > 1) bus.progress = 0
-        
-        // Simulating fuel consumption and heat
         health.fuel = Math.max(0, health.fuel - 0.05)
         health.temp = Math.min(110, health.temp + (Math.random() * 0.1))
-        
-        if (health.fuel < 5) {
-            // Auto fuel incident if not already reported? 
-            // For now just keep it simple
-        }
       } else {
-          health.temp = Math.max(30, health.temp - 0.2) // Cooling down while stopped
+          health.temp = Math.max(30, health.temp - 0.2)
       }
     })
     
@@ -131,48 +124,27 @@ export class AdminCore {
   private renderDashboard() {
     const activeIncidents = this.checkIncidents()
     const geofenceBreaches = this.checkGeofence()
+    const totalCap = this.buses.reduce((a,b)=>a+b.capacity, 0)
+    const totalPass = this.buses.reduce((a,b)=>a+b.passengers, 0)
+    const load = Math.round((totalPass/totalCap)*100) || 0
     const lowFuelCount = Array.from(this.fleetHealth.values()).filter(h => h.fuel < 20).length
 
     return `
       <div class="header-title"><h2>Intelligence Flotte</h2><p>Analyse prédictive et performance ${this.operatorId}.</p></div>
       <div class="stats-grid" style="margin-top:24px;">
-        <div class="stat-card" style="${lowFuelCount > 0 ? 'border-color:#f59e0b' : ''}">
-          <div class="stat-label">Alertes Énergie</div>
-          <div class="stat-value" style="color:${lowFuelCount > 0 ? '#f59e0b' : 'inherit'}">${lowFuelCount}</div>
-        </div>
-        <div class="stat-card" style="${activeIncidents.length > 0 ? 'border-color:#ef4444' : ''}">
-          <div class="stat-label">Pannes Critiques</div>
-          <div class="stat-value" style="color:${activeIncidents.length > 0 ? '#ef4444' : 'inherit'}">${activeIncidents.length}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Santé Moteur Avg</div>
-          <div class="stat-value" style="color:#10b981">Bonne</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Disponibilité</div>
-          <div class="stat-value">94%</div>
-        </div>
+        <div class="stat-card" style="${lowFuelCount > 0 ? 'border-color:#f59e0b' : ''}"><div class="stat-label">Alertes Énergie</div><div class="stat-value" style="color:${lowFuelCount > 0 ? '#f59e0b' : 'inherit'}">${lowFuelCount}</div></div>
+        <div class="stat-card" style="${activeIncidents.length > 0 ? 'border-color:#ef4444' : ''}"><div class="stat-label">Pannes</div><div class="stat-value" style="color:${activeIncidents.length > 0 ? '#ef4444' : 'inherit'}">${activeIncidents.length}</div></div>
+        <div class="stat-card"><div class="stat-label">Écart Itinéraire</div><div class="stat-value">${geofenceBreaches.length}</div></div>
+        <div class="stat-card"><div class="stat-label">Charge Flotte</div><div class="stat-value">${load}%</div></div>
       </div>
-
       <div class="table-container">
         <div class="table-header"><h3>🛠️ Maintenance Préventive</h3></div>
         <table class="data-table">
           <thead><tr><th>Bus</th><th>Carburant</th><th>Temp.</th><th>État</th></tr></thead>
           <tbody>
             ${this.buses.slice(0,5).map(b => {
-              const h = this.fleetHealth.get(b.id)!
-              const isWarning = h.fuel < 25 || h.temp > 90
-              return `<tr>
-                <td><strong>${b.plate}</strong></td>
-                <td>
-                  <div style="width:100px; height:8px; background:#334155; border-radius:4px; overflow:hidden;">
-                    <div style="width:${h.fuel}%; height:100%; background:${h.fuel < 25 ? '#ef4444' : '#10b981'}"></div>
-                  </div>
-                  <span style="font-size:10px; color:var(--admin-muted)">${Math.round(h.fuel)}%</span>
-                </td>
-                <td><span style="color:${h.temp > 90 ? '#ef4444' : 'inherit'}">${Math.round(h.temp)}°C</span></td>
-                <td><span class="badge ${isWarning ? 'badge-orange' : 'badge-green'}">${isWarning ? 'Vérification' : 'Optimal'}</span></td>
-              </tr>`
+              const h = this.fleetHealth.get(b.id)!; const isW = h.fuel < 25 || h.temp > 90
+              return `<tr><td><strong>${b.plate}</strong></td><td><div style="width:100px; height:8px; background:#334155; border-radius:4px; overflow:hidden;"><div style="width:${h.fuel}%; height:100%; background:${h.fuel < 25 ? '#ef4444' : '#10b981'}"></div></div><span style="font-size:10px">${Math.round(h.fuel)}%</span></td><td><span style="color:${h.temp>90?'#ef4444':'inherit'}">${Math.round(h.temp)}°C</span></td><td><span class="badge ${isW?'badge-orange':'badge-green'}">${isW?'Vérification':'Optimal'}</span></td></tr>`
             }).join('')}
           </tbody>
         </table>
@@ -180,29 +152,15 @@ export class AdminCore {
     `
   }
 
+  private renderCommand() {
+    return `<div class="command-map-container"><div id="command-map"></div><div class="map-overlay-card"><div class="map-title"><span class="pulse-live"></span><h3>Commandement</h3></div><div class="fleet-stat-row"><span>Bus Actifs</span><strong>${this.buses.length}</strong></div><div class="fleet-stat-row" style="color:#ef4444"><span>Pannes</span><strong>${this.checkIncidents().length}</strong></div><div class="fleet-stat-row" style="color:#eab308"><span>Hors Trajet</span><strong>${this.checkGeofence().length}</strong></div></div></div>`
+  }
+
   private renderFleet() {
-    return `
-      <div class="admin-header"><h2>Ma Flotte</h2></div>
-      <div class="table-container">
-        <table class="data-table">
-          <thead><tr><th>Bus</th><th>Énergie</th><th>Plan de Vol</th><th>Actions</th></tr></thead>
-          <tbody>
-            ${this.buses.map(b => {
-              const h = this.fleetHealth.get(b.id)!
-              return `<tr>
-                <td><strong>${b.plate}</strong></td>
-                <td>${Math.round(h.fuel)}%</td>
-                <td>Ligne ${this.lines.find(l=>l.id===b.lineId)?.code}</td>
-                <td>
-                  <button class="btn btn-ghost" onclick="alert('Plein effectué pour ${b.plate}')">⚡ Refaire le plein</button>
-                  <button class="btn btn-ghost btn-message" data-bus-id="${b.id}">💬</button>
-                </td>
-              </tr>`
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-    `
+    return `<div class="admin-header"><h2>Ma Flotte</h2></div><div class="table-container"><table class="data-table"><thead><tr><th>Bus</th><th>Énergie</th><th>Plan</th><th>Actions</th></tr></thead><tbody>${this.buses.map(b => {
+      const h = this.fleetHealth.get(b.id)!
+      return `<tr><td><strong>${b.plate}</strong></td><td>${Math.round(h.fuel)}%</td><td>L<sup>e</sup> ${this.lines.find(l=>l.id===b.lineId)?.code}</td><td><button class="btn btn-ghost" onclick="alert('Plein effectué')">⚡ Refaire le plein</button><button class="btn btn-ghost btn-message" data-bus-id="${b.id}">💬</button></td></tr>`
+    }).join('')}</tbody></table></div>`
   }
 
   public setView(view: AdminView) { this.currentView = view; this.render(); if (view==='command') setTimeout(()=>this.initMap(),100) }
@@ -211,7 +169,6 @@ export class AdminCore {
     const links: { view: AdminView; label: string; icon: string }[] = [
       { view: 'dashboard', label: 'Surveillance', icon: 'M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z' },
       { view: 'command', label: 'Commandement', icon: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z' },
-      { view: 'geofencing', label: 'Géofencing', icon: 'M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71L12 2z' },
       { view: 'fleet', label: 'Ma Flotte', icon: 'M18 11H6V5h12m0 12H6v-3h12M17 2H7c-1.1 0-2 .9-2 2v15c0 1.1.9 2 2 2v2h1v-2h8v2h1v-2c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z' }
     ]
     return `<aside class="admin-sidebar"><div class="admin-logo"><h1>${this.operatorId}</h1></div><nav class="admin-nav">${links.map(l=>`<button class="nav-link ${this.currentView===l.view?'nav-link-active':''}" data-view="${l.view}"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="${l.icon}"/></svg>${l.label}</button>`).join('')}</nav></aside>`
@@ -219,13 +176,11 @@ export class AdminCore {
 
   public render() {
     if(!this.root) return; let content = ''
-    switch(this.currentView){case 'dashboard':content=this.renderDashboard();break;case 'command':content=this.renderCommand();break;case 'fleet':content=this.renderFleet();break;case 'geofencing':content=`<h2>Géofencing</h2>`;break;}
+    switch(this.currentView){case 'dashboard':content=this.renderDashboard();break;case 'command':content=this.renderCommand();break;case 'fleet':content=this.renderFleet();break;}
     this.root.innerHTML = `<div class="admin-layout ${this.currentView==='command'?'command-center':''}">${this.renderSidebar()}<main class="admin-main">${content}</main></div>`
     this.root.querySelectorAll('.nav-link[data-view]').forEach(btn=>btn.addEventListener('click',()=>this.setView((btn as HTMLElement).dataset.view as AdminView)))
     this.root.querySelectorAll('.btn-message').forEach(btn => btn.addEventListener('click', (e) => { const id = (e.currentTarget as HTMLElement).dataset.busId; if (id) {
-        const msg = prompt('Message:'); if(msg) {
-            const m = JSON.parse(localStorage.getItem('sunubus_messages')||'[]'); m.push({id:Date.now(),to:id,text:msg,read:false}); localStorage.setItem('sunubus_messages',JSON.stringify(m))
-        }
+        const msg = prompt('Message:'); if(msg) { const m = JSON.parse(localStorage.getItem('sunubus_messages')||'[]'); m.push({id:Date.now(),to:id,text:msg,read:false,from:this.operatorId}); localStorage.setItem('sunubus_messages',JSON.stringify(m)) }
     } }))
   }
 }

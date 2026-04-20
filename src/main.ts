@@ -49,7 +49,6 @@ async function initMap() {
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(leafletMap)
   
   stopsLayer = L.layerGroup().addTo(leafletMap)
-  busesLayer = L.layerGroup().addTo(leafletMap)
   routeDecorators = L.layerGroup().addTo(leafletMap)
 
   const userIcon = L.divIcon({ className:'', html:'<div class="user-dot-marker"></div>', iconSize:[20,20], iconAnchor:[10,10]})
