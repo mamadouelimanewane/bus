@@ -1,6 +1,6 @@
 import { buses, lines, stops } from './data/network'
 import { getPredictions, getSearchResults, tickBuses, formatEta, escapeHtml, findJourneys } from './lib/transit'
-import { GPS, getFullRoadPath, interpolate } from './lib/routing'
+import { GPS, getFullRoadPathSync, interpolate } from './lib/routing'
 import './style.css'
 
 declare const L: any
@@ -56,12 +56,12 @@ async function initMap() {
 
   // Tracer les corridors principaux avec le routage réel
   for (const cor of CORRIDORS_RAW) {
-    const road = await getFullRoadPath(cor)
+    const road = getFullRoadPathSync(cor)
     L.polyline(road.coords, { color:'#9ca3af', weight:2, opacity:0.3 }).addTo(leafletMap)
   }
 
   // WARM UP CACHE for all lines in background
-  lines.forEach(async (line) => getFullRoadPath(line.stopIds))
+  lines.forEach((line) => getFullRoadPathSync(line.stopIds))
 
   stops.forEach(stop => {
     const c = GPS[stop.id]; if(!c) return
