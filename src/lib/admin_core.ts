@@ -97,7 +97,17 @@ export class AdminCore {
     const name = prompt("Nom de la ligne (ex: Liberté 6 - Gare) :")
     const code = prompt("Code de la ligne (ex: 404) :")
     if (name && code) {
-      const newLine: Line = { id: `line-${Date.now()}`, code, name, operatorId: this.operatorId as any, color: '#'+Math.floor(Math.random()*16777215).toString(16), stopIds: ['palais','sandaga'], baseMinutes: 45, frequencyMin: 15 }
+      const newLine: Line = { 
+        id: `line-${Date.now()}`, 
+        code, 
+        name, 
+        headsign: name.split(' - ')[1] || name,
+        operatorId: this.operatorId as any, 
+        color: '#'+Math.floor(Math.random()*16777215).toString(16), 
+        stopIds: ['palais','sandaga'], 
+        baseMinutes: 45, 
+        frequencyMin: 15 
+      }
       this.lines.push(newLine); this.saveData(); this.render()
     }
   }
