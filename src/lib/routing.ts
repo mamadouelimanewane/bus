@@ -13,6 +13,8 @@ import { LOCATIONIQ_KEY, LOCATIONIQ_DIRECTIONS_URL, API_THROTTLE_MS } from './co
 
 // ── Coordonnées GPS ──
 export const GPS: Record<string, [number, number]> = { ...STOP_COORDINATES }
+// On enrichit avec les coordonnées définies directement dans network.ts
+stops.forEach(s => { if (s.coords) GPS[s.id] = s.coords })
 
 // ── Types ──────────────────────────────────────────────────────────────────
 export type RoadGeometry = {
@@ -41,31 +43,50 @@ export function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
+function isWaterPoint(lat: number, lon: number): boolean {
+  // 1. Dakar Bounding Box check (Zéro-Mer strict)
+  if (lat < 14.65 || lat > 14.85 || lon < -17.55 || lon > -17.25) return true
+
+  // 2. Zone du port et mer Est Plateau
+  const isPortArea = lat < 14.71 && lon > -17.428
+  // 3. Zone mer Nord (au dessus de la côte de Guédiawaye/Yoff)
+  const isNorthSea = lat > 14.785 && lon > -17.47
+  // 4. Zone mer Sud (au dessous du plateau)
+  const isSouthSea = lat < 14.66 && lon < -17.41
+
+  if (isPortArea || isNorthSea || isSouthSea) {
+    const nearStop = stops.some(s => {
+      const g = GPS[s.id]; return g && getDistanceKm(lat, lon, g[0], g[1]) < 0.4
+    })
+    if (!nearStop) return true
+  }
+  return false
+}
+
+/**
+ * Nettoyage global de la base de données de géométries au démarrage
+ */
+export function cleanAllGeometries() {
+  for (const lineId in ROUTE_GEOMETRIES) {
+    const g = ROUTE_GEOMETRIES[lineId as keyof typeof ROUTE_GEOMETRIES]
+    if (g && g.geometry) {
+      g.geometry = sanitizeCoords(g.geometry as [number, number][])
+    }
+  }
+}
+
 function sanitizeCoords(coords: [number, number][]): [number, number][] {
   if (coords.length < 2) return coords
   const result: [number, number][] = [coords[0]]
   for (let i = 1; i < coords.length; i++) {
     const [lat, lon] = coords[i]
+    if (isWaterPoint(lat, lon)) continue
     
-    // 1. Dakar Bounding Box check (Zéro-Mer strict)
-    if (lat < 14.65 || lat > 14.85 || lon < -17.55 || lon > -17.25) continue
-
-    // 2. Éviter le saut dans le Port/Mer ( sauf si c'est vraiment proche d'un arrêt )
-    const isDeepInPort = lat < 14.71 && lon > -17.428
-    if (isDeepInPort) {
-      // Exception pour les arrêts portuaires légitimes (Cyrnos, Port, etc)
-      const nearStop = stops.some(s => {
-        const sc = GPS[s.id]; return sc && getDistanceKm(lat, lon, sc[0], sc[1]) < 0.4
-      })
-      if (!nearStop) continue
-    }
-    
-    // 3. Jump check (max 2.5km entre deux points consécutifs)
+    // Jump check (max 2km)
     const prev = result[result.length - 1]
-    const dist = getDistanceKm(prev[0], prev[1], lat, lon)
-    if (dist > 2.5) continue 
+    if (prev && getDistanceKm(lat, lon, prev[0], prev[1]) > 2.0) continue
     
-    result.push(coords[i])
+    result.push([lat, lon])
   }
   return result
 }

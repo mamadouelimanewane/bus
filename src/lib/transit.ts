@@ -145,6 +145,18 @@ export function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;')
 }
 
+/**
+ * Calcul du tarif basé sur la distance (Dakar Standard: 150 - 500 FCFA)
+ */
+export function calculateFare(distanceMeters: number): number {
+  const km = distanceMeters / 1000
+  if (km < 5) return 150
+  if (km < 12) return 200
+  if (km < 20) return 300
+  if (km < 30) return 400
+  return 500
+}
+
 export function getEtaMinutes(bus: Bus, stopId: string): number | null {
   const line = getLine(bus.lineId)
   if (!line || !line.stopIds.includes(stopId)) {

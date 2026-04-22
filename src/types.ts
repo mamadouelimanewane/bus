@@ -4,6 +4,7 @@ export type Stop = {
   x: number
   y: number
   district: string
+  coords?: [number, number]
 }
 
 export type Line = {
@@ -26,6 +27,7 @@ export type Bus = {
   capacity: number
   passengers: number
   plate: string
+  nextStopId?: string
 }
 
 export type RouteMetrics = {

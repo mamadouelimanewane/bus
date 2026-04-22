@@ -20,6 +20,7 @@ export class AdminCore {
   private map: any = null
   private busMarkers: Map<string, any> = new Map()
   private fleetHealth: Map<string, BusHealth> = new Map()
+  private isStressTesting: boolean = false
 
   constructor(operatorId: string, rootId: string) {
     this.operatorId = operatorId
@@ -35,7 +36,8 @@ export class AdminCore {
         }
     })
     this.render()
-    setInterval(() => this.tick(), 2000)
+    setInterval(() => this.tick(), 1000)
+    window.addEventListener('sunubus_stress_test', () => this.runStressTest())
   }
 
   private checkIncidents() { return JSON.parse(localStorage.getItem('sunubus_incidents') || '[]').filter((inc:any) => !inc.resolved) }
@@ -71,7 +73,7 @@ export class AdminCore {
     this.buses.forEach(bus => {
       const isBroken = activeIncidents.some((inc:any) => inc.busId === bus.id); const health = this.fleetHealth.get(bus.id)
       if (health && !isBroken) {
-        bus.progress += 0.0015; if (bus.progress > 1) bus.progress = 0
+        bus.progress += 0.0025 * (this.isStressTesting ? 2 : 1); if (bus.progress > 1) bus.progress = 0
         health.fuel = Math.max(0, health.fuel - 0.05); health.temp = Math.min(110, health.temp + (Math.random() * 0.1))
       } else if (health) health.temp = Math.max(30, health.temp - 0.2)
     })
@@ -149,7 +151,45 @@ export class AdminCore {
   private renderDashboard() {
     const totalCap = this.buses.reduce((a,b)=>a+b.capacity, 0); const totalPass = this.buses.reduce((a,b)=>a+b.passengers, 0); const load = Math.round((totalPass/totalCap)*100) || 0
     const lowFuel = Array.from(this.fleetHealth.values()).filter(h => h.fuel < 20).length; const activeInc = this.checkIncidents()
-    return `<div class="admin-header"><h2>Intelligence Flotte</h2><button class="btn btn-primary" id="btn-export">📊 Rapport</button></div><div class="stats-grid"><div class="stat-card" style="${lowFuel>0?'border-color:#f59e0b':''}"><div class="stat-label">Alertes Énergie</div><div class="stat-value">${lowFuel}</div></div><div class="stat-card" style="${activeInc.length>0?'border-color:#ef4444':''}"><div class="stat-label">Pannes</div><div class="stat-value">${activeInc.length}</div></div><div class="stat-card"><div class="stat-label">Lignes Actives</div><div class="stat-value">${this.lines.length}</div></div><div class="stat-card"><div class="stat-label">Charge</div><div class="stat-value">${load}%</div></div></div>`
+    return `
+      <div class="admin-header">
+        <h2>Intelligence Flotte</h2>
+        <div style="display:flex; gap:10px;">
+          <button class="btn ${this.isStressTesting ? 'btn-danger' : 'btn-warning'}" id="btn-stress-test">🔥 Stress Test (150+)</button>
+          <button class="btn btn-primary" id="btn-export">📊 Rapport</button>
+        </div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card" style="${lowFuel>0?'border-color:#f59e0b':''}"><div class="stat-label">Alertes Énergie</div><div class="stat-value">${lowFuel}</div></div>
+        <div class="stat-card" style="${activeInc.length>0?'border-color:#ef4444':''}"><div class="stat-label">Pannes</div><div class="stat-value">${activeInc.length}</div></div>
+        <div class="stat-card"><div class="stat-label">Bus en Ligne</div><div class="stat-value">${this.buses.length}</div></div>
+        <div class="stat-card"><div class="stat-label">Charge Global</div><div class="stat-value">${load}%</div></div>
+      </div>
+    `
+  }
+
+  private runStressTest() {
+    if (this.isStressTesting) return;
+    this.isStressTesting = true;
+    console.log("DÉMARRAGE DU STRESS TEST : DÉPLOIEMENT DE 150 VÉHICULES...");
+    
+    for (let i = 0; i < 150; i++) {
+        const line = this.lines[Math.floor(Math.random() * this.lines.length)];
+        const newBus: Bus = {
+            id: `stress-${Date.now()}-${i}`,
+            lineId: line.id,
+            plate: `STRESS-${100 + i}-DX`,
+            progress: Math.random(),
+            speedFactor: 0.5 + Math.random(),
+            passengers: Math.floor(Math.random() * 80),
+            capacity: 80,
+            nextStopId: line.stopIds[1]
+        };
+        this.buses.push(newBus);
+        this.fleetHealth.set(newBus.id, { fuel: 50 + Math.random() * 50, temp: 40 + Math.random() * 20, lastMaintenance: '2026-04-22' });
+    }
+    this.render();
+    if (this.currentView === 'command') this.updateMapMarkers();
   }
 
   private renderLines() {
@@ -196,6 +236,7 @@ export class AdminCore {
         const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([header + rows], { type: 'text/csv' })); a.download = `rapport_${this.operatorId}.csv`; a.click()
     })
     this.root.querySelector('#btn-add-line')?.addEventListener('click', () => this.addLine())
+    this.root.querySelector('#btn-stress-test')?.addEventListener('click', () => this.runStressTest())
     this.root.querySelectorAll('.btn-delete-line').forEach(btn => btn.addEventListener('click', (e) => this.deleteLine((e.currentTarget as HTMLElement).dataset.id!)))
     this.root.querySelectorAll('.btn-reassign').forEach(btn => btn.addEventListener('click', (e) => this.reassignBus((e.currentTarget as HTMLElement).dataset.id!)))
   }
