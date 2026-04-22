@@ -208,7 +208,7 @@
         class OperationalBus {
             constructor(line, roadPoints, offset) {
                 this.line = line; this.pts = roadPoints; this.idx = offset; this.prog = 0; this.dir = 1;
-                this.speed = (0.0006 + Math.random() * 0.001);
+                this.speed = (0.005 + Math.random() * 0.01);
                 const icon = L.divIcon({
                     className: '',
                     html: `<div class="bus-unit"><div class="bus-circle" style="background:${line.color}">${line.id}</div></div>`,
@@ -244,7 +244,9 @@
             L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png').addTo(map);
 
             const list = document.getElementById('line-list');
-            for (const line of LINES) {
+            
+            // Parallel road fetching to avoid blocking the UI
+            const roadPromises = LINES.map(async (line) => {
                 const road = await fetchRoad(line.points);
                 L.polyline(road, { color: line.color, weight: 5, opacity: 0.3 }).addTo(map);
                 for(let i=0; i<3; i++) buses.push(new OperationalBus(line, road, Math.floor((i/3)*road.length)));
@@ -254,8 +256,20 @@
                 li.innerHTML = `<span style="font-weight:900; color:${line.color}">${line.id}</span><span style="font-size:12px; color:var(--text-muted)">${line.name}</span>`;
                 li.onclick = () => map.fitBounds(L.polyline(road).getBounds());
                 list.appendChild(li);
-            }
+            });
+
             animate();
+            await Promise.all(roadPromises);
+            
+            // Connect Speed Slider
+            const speedSlider = document.getElementById('sim-speed');
+            const speedInd = document.getElementById('speed-ind');
+            if(speedSlider) {
+                speedSlider.addEventListener('input', (e) => {
+                    simulationSpeed = parseFloat(e.target.value);
+                    if(speedInd) speedInd.innerText = simulationSpeed.toFixed(1) + 'x';
+                });
+            }
         }
 
         function animate() {
