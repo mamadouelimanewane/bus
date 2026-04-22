@@ -1,23 +1,7 @@
 import { defineConfig } from 'vite'
 import { resolve } from 'path'
-import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
-  plugins: [
-    VitePWA({
-      registerType: 'autoUpdate',
-      devOptions: {
-        enabled: true
-      },
-      manifest: {
-        name: 'SunuBus Client',
-        short_name: 'SunuBus',
-        description: 'Dakar Dem Dikk - AFTU Live Tracker',
-        theme_color: '#d90429',
-        background_color: '#f3f4f6',
-      }
-    })
-  ],
   build: {
     rollupOptions: {
       input: {
