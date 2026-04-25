@@ -1,6 +1,11 @@
 {
-  "appId": "com.sunubus.client",
+  "appId": "sn.sunubus.mobile",
   "appName": "SunuBus",
   "webDir": "dist",
-  "bundledWebRuntime": false
+  "bundledWebRuntime": false,
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    }
+  }
 }
